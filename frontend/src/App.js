@@ -189,9 +189,14 @@ function App() {
     } else {
       // Toggle mute
       if (isMuted) {
-        // Unmuting - check if we were playing favorite or live radio
-        if (playingFavorite) {
-          // Resume favorite from saved position
+        // Unmuting - just restore volume if audio is already playing
+        if (audioRef.current && audioRef.current.src) {
+          audioRef.current.volume = volume / 10;
+          if (audioRef.current.paused) {
+            audioRef.current.play().catch(console.error);
+          }
+        } else if (playingFavorite) {
+          // No audio loaded, need to fetch favorite
           try {
             const favResponse = await axios.get(`${API}/favorites/stream`);
             if (favResponse.data.audio_url) {
@@ -202,13 +207,9 @@ function App() {
             }
           } catch (e) {
             console.error("Error resuming favorite:", e);
-            audioRef.current.volume = volume / 10;
-            if (audioRef.current.paused) {
-              audioRef.current.play().catch(console.error);
-            }
           }
         } else {
-          // Resume live radio - fetch fresh stream
+          // No audio loaded, need to fetch radio stream
           try {
             const streamResponse = await axios.get(`${API}/radio/stream`);
             if (streamResponse.data.audio_url) {
@@ -219,10 +220,6 @@ function App() {
             }
           } catch (e) {
             console.error("Error unmuting:", e);
-            audioRef.current.volume = volume / 10;
-            if (audioRef.current.paused) {
-              audioRef.current.play().catch(console.error);
-            }
           }
         }
         setIsMuted(false);
@@ -251,10 +248,23 @@ function App() {
 
   // Play favorite
   const playFav = async () => {
-    if (!favorite || !audioRef.current) return;
+    console.log("playFav called, favorite:", favorite);
+    
+    if (!favorite) {
+      showToast("No favorite saved", "error");
+      return;
+    }
+    
+    if (!audioRef.current) {
+      showToast("Audio player not ready", "error");
+      return;
+    }
     
     try {
+      showToast("Loading favorite...");
       const response = await axios.get(`${API}/favorites/stream`);
+      console.log("Favorite stream response:", response.data);
+      
       if (response.data.audio_url) {
         audioRef.current.src = response.data.audio_url;
         audioRef.current.currentTime = 0;
@@ -264,10 +274,12 @@ function App() {
         setIsTunedIn(true);
         setIsMuted(false);
         showToast(`Playing: ${favorite.title}`);
+      } else {
+        showToast("Couldn't get audio URL", "error");
       }
     } catch (e) {
       console.error("Error playing favorite:", e);
-      showToast("Couldn't play favorite", "error");
+      showToast(`Error: ${e.message}`, "error");
     }
   };
 
