@@ -13,11 +13,10 @@ services:
       - key: CORS_ORIGINS
         value: "*"
     
-  # Frontend React App
+  # Frontend React App (Static Site)
   - type: web
     name: madrid-rock-radio
     env: static
-    region: oregon
     plan: free
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: frontend/build
