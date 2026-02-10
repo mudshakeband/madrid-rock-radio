@@ -29,6 +29,7 @@ class Track(BaseModel):
     duration: int = 0
     audio_url: Optional[str] = None
     thumbnail: Optional[str] = None
+    url_fetched_at: float = 0  # Timestamp when URL was fetched
 
 class TrackCreate(BaseModel):
     youtube_url: str
@@ -103,6 +104,8 @@ async def refresh_track_url(track: Track) -> Track:
             track.artist = track.artist or info['artist']
             track.duration = info['duration']
             track.thumbnail = info['thumbnail']
+            track.url_fetched_at = time.time()
+            logger.info(f"Refreshed URL for: {track.title}")
     except Exception as e:
         logger.error(f"Error refreshing URL: {e}")
     return track
@@ -148,13 +151,46 @@ async def play_next_track():
     else:
         radio_state.current_track = radio_state.playlist[0]
     
-    # Refresh audio URL
-    radio_state.current_track = await refresh_track_url(radio_state.current_track)
+    # Refresh audio URL only if needed (older than 2 hours or missing)
+    needs_refresh = (
+        not radio_state.current_track.audio_url or 
+        (time.time() - radio_state.current_track.url_fetched_at) > 7200
+    )
+    
+    if needs_refresh:
+        radio_state.current_track = await refresh_track_url(radio_state.current_track)
+    
     radio_state.started_at = time.time()
     radio_state.position = 0
     radio_state.is_playing = True
     
     logger.info(f"Now playing: {radio_state.current_track.title}")
+    
+    # Background task: pre-fetch URL for next track
+    asyncio.create_task(prefetch_next_track())
+
+async def prefetch_next_track():
+    """Prefetch audio URL for the next track in background"""
+    try:
+        if not radio_state.current_track or not radio_state.playlist:
+            return
+        
+        current_idx = next((i for i, t in enumerate(radio_state.playlist) 
+                          if t.id == radio_state.current_track.id), -1)
+        next_idx = (current_idx + 1) % len(radio_state.playlist)
+        next_track = radio_state.playlist[next_idx]
+        
+        # Only prefetch if URL is old or missing
+        needs_refresh = (
+            not next_track.audio_url or 
+            (time.time() - next_track.url_fetched_at) > 7200
+        )
+        
+        if needs_refresh:
+            logger.info(f"Pre-fetching URL for: {next_track.title}")
+            await refresh_track_url(next_track)
+    except Exception as e:
+        logger.error(f"Error pre-fetching next track: {e}")
 
 def get_current_position() -> float:
     """Calculate current playback position"""
@@ -280,8 +316,14 @@ async def get_favorite_stream():
     if not fav or not fav.track:
         raise HTTPException(status_code=404, detail="No favorite saved")
     
-    # Refresh URL
-    fav.track = await refresh_track_url(fav.track)
+    # Only refresh URL if older than 2 hours or missing
+    needs_refresh = (
+        not fav.track.audio_url or 
+        (time.time() - fav.track.url_fetched_at) > 7200
+    )
+    
+    if needs_refresh:
+        fav.track = await refresh_track_url(fav.track)
     
     return {
         "audio_url": fav.track.audio_url,
