@@ -151,10 +151,10 @@ async def play_next_track():
     else:
         radio_state.current_track = radio_state.playlist[0]
     
-    # Refresh audio URL only if needed (older than 2 hours or missing)
+    # Refresh audio URL only if needed (older than 30 minutes or missing)
     needs_refresh = (
         not radio_state.current_track.audio_url or 
-        (time.time() - radio_state.current_track.url_fetched_at) > 7200
+        (time.time() - radio_state.current_track.url_fetched_at) > 1800  # 30 minutes
     )
     
     if needs_refresh:
@@ -180,10 +180,10 @@ async def prefetch_next_track():
         next_idx = (current_idx + 1) % len(radio_state.playlist)
         next_track = radio_state.playlist[next_idx]
         
-        # Only prefetch if URL is old or missing
+        # Only prefetch if URL is old or missing (30 minutes)
         needs_refresh = (
             not next_track.audio_url or 
-            (time.time() - next_track.url_fetched_at) > 7200
+            (time.time() - next_track.url_fetched_at) > 1800  # 30 minutes
         )
         
         if needs_refresh:
@@ -316,10 +316,10 @@ async def get_favorite_stream():
     if not fav or not fav.track:
         raise HTTPException(status_code=404, detail="No favorite saved")
     
-    # Only refresh URL if older than 2 hours or missing
+    # Only refresh URL if older than 30 minutes or missing
     needs_refresh = (
         not fav.track.audio_url or 
-        (time.time() - fav.track.url_fetched_at) > 7200
+        (time.time() - fav.track.url_fetched_at) > 1800  # 30 minutes
     )
     
     if needs_refresh:
