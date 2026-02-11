@@ -29,7 +29,6 @@ class Track(BaseModel):
     duration: int = 0
     audio_url: Optional[str] = None
     thumbnail: Optional[str] = None
-    url_fetched_at: float = 0  # Timestamp when URL was fetched
 
 class TrackCreate(BaseModel):
     youtube_url: str
@@ -42,7 +41,7 @@ class RadioState(BaseModel):
     is_playing: bool = True
     started_at: float = 0
     playlist: List[Track] = []
-    history: List[Track] = []  # Last 5 played tracks
+    history: List[Track] = []
 
 class UserFavorite(BaseModel):
     track: Optional[Track] = None
@@ -50,7 +49,7 @@ class UserFavorite(BaseModel):
 
 # ==================== GLOBAL STATE ====================
 radio_state = RadioState()
-user_favorites = {}  # In production, this would be per-user in DB
+user_favorites = {}
 
 # Default playlist
 DEFAULT_PLAYLIST = [
@@ -95,8 +94,9 @@ def get_audio_url(youtube_url: str) -> dict:
         return None
 
 async def refresh_track_url(track: Track) -> Track:
-    """Refresh audio URL for a track"""
+    """Refresh audio URL for a track - ALWAYS refresh to ensure fresh URLs"""
     try:
+        logger.info(f"Fetching fresh URL for: {track.title}")
         info = await asyncio.to_thread(get_audio_url, track.youtube_url)
         if info:
             track.audio_url = info['audio_url']
@@ -104,8 +104,7 @@ async def refresh_track_url(track: Track) -> Track:
             track.artist = track.artist or info['artist']
             track.duration = info['duration']
             track.thumbnail = info['thumbnail']
-            track.url_fetched_at = time.time()
-            logger.info(f"Refreshed URL for: {track.title}")
+            logger.info(f"✓ Fresh URL ready for: {track.title}")
     except Exception as e:
         logger.error(f"Error refreshing URL: {e}")
     return track
@@ -124,14 +123,7 @@ async def initialize_radio():
         await play_next_track()
 
 async def play_next_track():
-    """Advance to next track
-    
-    Playlist behavior:
-    - Shuffles once on initialization
-    - Plays through in order (no re-shuffling between tracks)
-    - Loops back to start when reaching the end
-    - "Up Next" shows the next 3 tracks in rotation order
-    """
+    """Advance to next track"""
     global radio_state
     
     if not radio_state.playlist:
@@ -140,7 +132,7 @@ async def play_next_track():
     # Move current to history
     if radio_state.current_track:
         radio_state.history.insert(0, radio_state.current_track)
-        radio_state.history = radio_state.history[:5]  # Keep last 5
+        radio_state.history = radio_state.history[:5]
     
     # Get next track (rotate playlist)
     if radio_state.current_track:
@@ -151,46 +143,15 @@ async def play_next_track():
     else:
         radio_state.current_track = radio_state.playlist[0]
     
-    # Refresh audio URL only if needed (older than 30 minutes or missing)
-    needs_refresh = (
-        not radio_state.current_track.audio_url or 
-        (time.time() - radio_state.current_track.url_fetched_at) > 1800  # 30 minutes
-    )
-    
-    if needs_refresh:
-        radio_state.current_track = await refresh_track_url(radio_state.current_track)
+    # ALWAYS refresh URL when changing tracks (YouTube URLs expire)
+    logger.info(f"=== Changing to track: {radio_state.current_track.title} ===")
+    radio_state.current_track = await refresh_track_url(radio_state.current_track)
     
     radio_state.started_at = time.time()
     radio_state.position = 0
     radio_state.is_playing = True
     
-    logger.info(f"Now playing: {radio_state.current_track.title}")
-    
-    # Background task: pre-fetch URL for next track
-    asyncio.create_task(prefetch_next_track())
-
-async def prefetch_next_track():
-    """Prefetch audio URL for the next track in background"""
-    try:
-        if not radio_state.current_track or not radio_state.playlist:
-            return
-        
-        current_idx = next((i for i, t in enumerate(radio_state.playlist) 
-                          if t.id == radio_state.current_track.id), -1)
-        next_idx = (current_idx + 1) % len(radio_state.playlist)
-        next_track = radio_state.playlist[next_idx]
-        
-        # Only prefetch if URL is old or missing (30 minutes)
-        needs_refresh = (
-            not next_track.audio_url or 
-            (time.time() - next_track.url_fetched_at) > 1800  # 30 minutes
-        )
-        
-        if needs_refresh:
-            logger.info(f"Pre-fetching URL for: {next_track.title}")
-            await refresh_track_url(next_track)
-    except Exception as e:
-        logger.error(f"Error pre-fetching next track: {e}")
+    logger.info(f"▶ Now playing: {radio_state.current_track.title}")
 
 def get_current_position() -> float:
     """Calculate current playback position"""
@@ -221,9 +182,10 @@ async def get_radio_state():
     """Get current radio state"""
     current_position = get_current_position()
     
-    # Check if track ended
+    # Check if track ended - advance to next
     if (radio_state.current_track and 
         current_position >= radio_state.current_track.duration - 1):
+        logger.info(f"Track ended: {radio_state.current_track.title}")
         await play_next_track()
         current_position = 0
     
@@ -239,13 +201,16 @@ async def get_radio_state():
 
 @api_router.get("/radio/stream")
 async def get_stream_url():
-    """Get audio stream URL"""
-    if not radio_state.current_track or not radio_state.current_track.audio_url:
-        if radio_state.current_track:
-            radio_state.current_track = await refresh_track_url(radio_state.current_track)
-        
-        if not radio_state.current_track or not radio_state.current_track.audio_url:
-            raise HTTPException(status_code=404, detail="No track playing")
+    """Get audio stream URL - always return fresh URL"""
+    if not radio_state.current_track:
+        raise HTTPException(status_code=404, detail="No track playing")
+    
+    # Always refresh URL to ensure it's valid
+    logger.info(f"Stream requested for: {radio_state.current_track.title}")
+    radio_state.current_track = await refresh_track_url(radio_state.current_track)
+    
+    if not radio_state.current_track.audio_url:
+        raise HTTPException(status_code=404, detail="Could not get audio URL")
     
     return {
         "audio_url": radio_state.current_track.audio_url,
@@ -283,7 +248,7 @@ async def add_to_playlist(track_data: TrackCreate):
 # ==================== FAVORITES ====================
 @api_router.post("/favorites/save")
 async def save_favorite():
-    """Save current track as favorite (overwrites previous)"""
+    """Save current track as favorite"""
     if not radio_state.current_track:
         raise HTTPException(status_code=404, detail="No track playing")
     
@@ -304,26 +269,18 @@ async def get_favorite():
     if not fav or not fav.track:
         return {"favorite": None}
     
-    # Refresh URL if needed
-    fav.track = await refresh_track_url(fav.track)
-    
     return {"favorite": fav.track.model_dump()}
 
 @api_router.get("/favorites/stream")
 async def get_favorite_stream():
-    """Get favorite track stream URL"""
+    """Get favorite track stream URL - always fresh"""
     fav = user_favorites.get("main")
     if not fav or not fav.track:
         raise HTTPException(status_code=404, detail="No favorite saved")
     
-    # Only refresh URL if older than 30 minutes or missing
-    needs_refresh = (
-        not fav.track.audio_url or 
-        (time.time() - fav.track.url_fetched_at) > 1800  # 30 minutes
-    )
-    
-    if needs_refresh:
-        fav.track = await refresh_track_url(fav.track)
+    # Always refresh URL
+    logger.info(f"Favorite stream requested: {fav.track.title}")
+    fav.track = await refresh_track_url(fav.track)
     
     return {
         "audio_url": fav.track.audio_url,
@@ -338,7 +295,7 @@ async def get_share_data():
         raise HTTPException(status_code=404, detail="No track playing")
     
     track = radio_state.current_track
-    share_url = f"https://madridrock.radio/?track={track.id}"  # Will update with real domain
+    share_url = f"https://madridrock.radio/?track={track.id}"
     
     return {
         "url": share_url,
