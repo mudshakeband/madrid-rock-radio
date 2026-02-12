@@ -1,5 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -209,7 +209,6 @@ async def fetch_drive_playlist() -> List[Track]:
                 file_id=file_id,
                 title=parsed["title"],
                 artist=parsed["artist"],
-                filename=filename,
                 audio_url=get_drive_direct_link(file_id),
                 source="drive",
                 duration=180  # Default 3 min
@@ -220,41 +219,44 @@ async def fetch_drive_playlist() -> List[Track]:
         return tracks
         
     except Exception as e:
-        logger.error(f"❌ Error fetching from Drive: {e}")
+        logger.error(f"Error fetching Drive playlist: {e}")
         return []
 
-# ==================== RADIO MANAGEMENT ====================
 async def initialize_radio():
-    """Initialize radio - prefer Google Drive, fall back to YouTube"""
-    global radio_state
+    """Initialize radio with tracks"""
+    logger.info("🎵 Starting Madrid Rock Radio...")
     
-    if not radio_state.playlist:
-        # Try Google Drive first
-        if DRIVE_API_ENABLED:
-            logger.info("🎵 Loading playlist from Google Drive...")
-            drive_tracks = await fetch_drive_playlist()
-            if drive_tracks:
-                radio_state.playlist = drive_tracks
-                random.shuffle(radio_state.playlist)
-                await play_next_track()
-                logger.info(f"✅ Radio started with {len(drive_tracks)} Drive tracks")
-                return
-        
-        # Fall back to YouTube
-        logger.info("🎵 Loading playlist from YouTube...")
-        for track_data in DEFAULT_PLAYLIST:
-            track = Track(**track_data, source="youtube")
+    # Try Drive first
+    drive_tracks = await fetch_drive_playlist()
+    
+    if drive_tracks:
+        logger.info(f"✅ Loaded {len(drive_tracks)} tracks from Google Drive")
+        radio_state.playlist = drive_tracks
+    else:
+        logger.info("⚠️  No Drive tracks available, loading YouTube defaults...")
+        for item in DEFAULT_PLAYLIST:
+            track = Track(
+                youtube_url=item["youtube_url"],
+                title=item["title"],
+                artist=item["artist"],
+                source="youtube"
+            )
             radio_state.playlist.append(track)
-        
-        random.shuffle(radio_state.playlist)
+    
+    # Shuffle playlist for variety
+    random.shuffle(radio_state.playlist)
+    
+    # Start first track
+    if radio_state.playlist:
         await play_next_track()
-        logger.info(f"✅ Radio started with {len(DEFAULT_PLAYLIST)} YouTube tracks")
+        logger.info(f"🎸 Radio initialized with {len(radio_state.playlist)} tracks")
+    else:
+        logger.warning("⚠️  No tracks available!")
 
 async def play_next_track():
-    """Advance to next track"""
-    global radio_state
-    
+    """Advance to next track in playlist"""
     if not radio_state.playlist:
+        logger.warning("No playlist available")
         return
     
     # Move current to history
@@ -349,27 +351,62 @@ async def get_stream_url():
     }
 
 @api_router.get("/radio/proxy/{file_id}")
-async def proxy_drive_audio(file_id: str):
-    """Proxy Google Drive audio to avoid CORS issues"""
+async def proxy_drive_audio(file_id: str, request: Request):
+    """Proxy Google Drive audio with proper streaming support (range requests)"""
     drive_url = f"https://drive.google.com/uc?export=download&id={file_id}"
     
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-            response = await client.get(drive_url)
-            
-            if response.status_code != 200:
-                logger.error(f"Drive returned {response.status_code} for file {file_id}")
-                raise HTTPException(status_code=response.status_code, detail="Could not fetch audio from Drive")
-            
-            return StreamingResponse(
-                iter([response.content]),
-                media_type="audio/mpeg",
-                headers={
+        # Parse range header from browser
+        range_header = request.headers.get("range")
+        
+        headers_to_send = {}
+        if range_header:
+            headers_to_send["Range"] = range_header
+            logger.info(f"Range request: {range_header}")
+        
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
+            # Stream the response
+            async with client.stream("GET", drive_url, headers=headers_to_send) as response:
+                if response.status_code not in [200, 206]:
+                    logger.error(f"Drive returned {response.status_code} for file {file_id}")
+                    raise HTTPException(
+                        status_code=response.status_code, 
+                        detail="Could not fetch audio from Drive"
+                    )
+                
+                # Forward important headers
+                response_headers = {
                     "Accept-Ranges": "bytes",
-                    "Content-Length": str(len(response.content)),
-                    "Cache-Control": "public, max-age=31536000"
+                    "Content-Type": "audio/mpeg",
+                    "Cache-Control": "public, max-age=31536000",
                 }
-            )
+                
+                # Forward content-length if available
+                if "content-length" in response.headers:
+                    response_headers["Content-Length"] = response.headers["content-length"]
+                
+                # Forward content-range for partial responses
+                if "content-range" in response.headers:
+                    response_headers["Content-Range"] = response.headers["content-range"]
+                
+                # Stream the content in chunks
+                async def stream_generator():
+                    async for chunk in response.aiter_bytes(chunk_size=65536):
+                        yield chunk
+                
+                # Return 206 for range requests, 200 otherwise
+                status_code = 206 if response.status_code == 206 else 200
+                
+                return StreamingResponse(
+                    stream_generator(),
+                    status_code=status_code,
+                    headers=response_headers,
+                    media_type="audio/mpeg"
+                )
+                
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP error proxying Drive audio: {e}")
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
     except Exception as e:
         logger.error(f"Error proxying Drive audio: {e}")
         raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
