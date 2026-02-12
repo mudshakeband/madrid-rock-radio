@@ -1,29 +1,15 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse, Response
+from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import os
 import logging
-import yt_dlp
 import asyncio
-import random
 import time
 import uuid
-import json
 import re
-import io
-from datetime import datetime
-
-# Try to import Google Drive API (optional)
-try:
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaIoBaseDownload
-    GOOGLE_IMPORTS_AVAILABLE = True
-except ImportError:
-    GOOGLE_IMPORTS_AVAILABLE = False
-    logging.warning("Google API libraries not installed - Drive integration disabled")
+import httpx
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,49 +19,24 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Madrid Rock Radio")
 api_router = APIRouter(prefix="/api")
 
-# ==================== GOOGLE DRIVE CONFIG ====================
-DRIVE_FOLDER_ID = "10bt7zLoZrZH6JOJQQqPNauUsZ82x3_sm"
-DRIVE_API_ENABLED = False
-drive_service = None
+# ==================== TELEGRAM CONFIG ====================
+# Get these from environment variables
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHANNEL_ID = os.getenv('TELEGRAM_CHANNEL_ID', '')
 
-# Try to set up Drive API from environment variable
-if GOOGLE_IMPORTS_AVAILABLE:
-    service_account_json = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON')
-    
-    if service_account_json:
-        try:
-            # Parse JSON from environment variable
-            creds_dict = json.loads(service_account_json)
-            credentials = service_account.Credentials.from_service_account_info(
-                creds_dict,
-                scopes=['https://www.googleapis.com/auth/drive.readonly']
-            )
-            drive_service = build('drive', 'v3', credentials=credentials)
-            DRIVE_API_ENABLED = True
-            logger.info("✅ Google Drive API enabled (from environment variable)")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize Drive API: {e}")
-    else:
-        logger.info("ℹ️  No GOOGLE_SERVICE_ACCOUNT_JSON environment variable - Drive API disabled")
-else:
-    logger.info("ℹ️  Google API libraries not installed - using YouTube only")
+# You'll set these in Render dashboard:
+# TELEGRAM_BOT_TOKEN = your bot token from BotFather
+# TELEGRAM_CHANNEL_ID = your channel ID (we'll show you how to get this)
 
 # ==================== MODELS ====================
 class Track(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    youtube_url: Optional[str] = None
-    file_id: Optional[str] = None
+    file_id: str  # Telegram file_id
     title: str = ""
     artist: str = ""
     duration: int = 0
     audio_url: Optional[str] = None
     thumbnail: Optional[str] = None
-    source: str = "youtube"
-
-class TrackCreate(BaseModel):
-    youtube_url: str
-    title: Optional[str] = None
-    artist: Optional[str] = None
 
 class RadioState(BaseModel):
     current_track: Optional[Track] = None
@@ -93,66 +54,16 @@ class UserFavorite(BaseModel):
 radio_state = RadioState()
 user_favorites = {}
 
-# Default playlist
-DEFAULT_PLAYLIST = [
-    {"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "title": "Never Gonna Give You Up", "artist": "Rick Astley"},
-    {"youtube_url": "https://www.youtube.com/watch?v=fJ9rUzIMcZQ", "title": "Bohemian Rhapsody", "artist": "Queen"},
-    {"youtube_url": "https://www.youtube.com/watch?v=hTWKbfoikeg", "title": "Smells Like Teen Spirit", "artist": "Nirvana"},
-]
-
-# ==================== YT-DLP HELPERS ====================
-def get_audio_url(youtube_url: str) -> dict:
-    """Extract audio URL and metadata from YouTube"""
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
-            audio_url = info.get('url')
-            
-            if not audio_url:
-                formats = info.get('formats', [])
-                audio_formats = [f for f in formats if f.get('acodec') != 'none']
-                if audio_formats:
-                    audio_url = audio_formats[-1].get('url')
-            
-            return {
-                'audio_url': audio_url,
-                'title': info.get('title', 'Unknown Track'),
-                'artist': info.get('uploader', 'Unknown Artist'),
-                'duration': info.get('duration', 180),
-                'thumbnail': info.get('thumbnail', None)
-            }
-    except Exception as e:
-        logger.error(f"Error extracting audio: {e}")
-        return None
-
-async def refresh_track_url(track: Track) -> Track:
-    """Refresh audio URL for a track"""
-    try:
-        logger.info(f"Fetching fresh URL for: {track.title}")
-        info = await asyncio.to_thread(get_audio_url, track.youtube_url)
-        if info:
-            track.audio_url = info['audio_url']
-            track.title = track.title or info['title']
-            track.artist = track.artist or info['artist']
-            track.duration = info['duration']
-            track.thumbnail = info['thumbnail']
-            logger.info(f"✓ Fresh URL ready for: {track.title}")
-    except Exception as e:
-        logger.error(f"Error refreshing URL: {e}")
-    return track
-
-# ==================== GOOGLE DRIVE HELPERS ====================
+# ==================== TELEGRAM HELPERS ====================
 def parse_filename(filename: str) -> dict:
-    """Parse MP3 filename to extract artist and title"""
+    """Parse audio filename to extract artist and title"""
+    # Remove extension
     name = filename.rsplit('.', 1)[0]
+    
+    # Remove leading numbers (e.g., "01 - " or "01.")
     name = re.sub(r'^\d+\s*[-_.]?\s*', '', name)
     
+    # Try to split by " - " or "-"
     if ' - ' in name:
         parts = name.split(' - ', 1)
         return {"artist": parts[0].strip(), "title": parts[1].strip()}
@@ -163,117 +74,193 @@ def parse_filename(filename: str) -> dict:
     
     return {"artist": "Unknown Artist", "title": name.strip()}
 
-def get_drive_direct_link(file_id: str) -> str:
-    """Get streamable URL for Google Drive file via backend proxy"""
-    return f"/api/radio/proxy/{file_id}"
-
-async def fetch_drive_playlist() -> List[Track]:
-    """Fetch MP3 files from Google Drive folder"""
-    if not DRIVE_API_ENABLED:
+async def fetch_telegram_playlist() -> List[Track]:
+    """Fetch audio files from Telegram channel"""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
+        logger.error("❌ Telegram credentials not configured!")
         return []
     
     try:
-        logger.info("🔄 Scanning Google Drive folder...")
+        logger.info("🔄 Fetching songs from Telegram channel...")
         
-        query = f"'{DRIVE_FOLDER_ID}' in parents and (mimeType='audio/mpeg' or name contains '.mp3') and trashed=false"
+        # Use Telegram Bot API to get updates/messages
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
         
-        results = drive_service.files().list(
-            q=query,
-            fields="files(id, name, size)",
-            orderBy="name",
-            pageSize=100
-        ).execute()
-        
-        files = results.get('files', [])
-        logger.info(f"✅ Found {len(files)} MP3 files in Drive")
-        
-        tracks = []
-        for file_info in files:
-            file_id = file_info['id']
-            filename = file_info['name']
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=10.0)
+            data = response.json()
             
-            parsed = parse_filename(filename)
+            if not data.get('ok'):
+                logger.error(f"❌ Telegram API error: {data}")
+                return []
             
-            track = Track(
-                file_id=file_id,
-                title=parsed["title"],
-                artist=parsed["artist"],
-                audio_url=get_drive_direct_link(file_id),
-                source="drive",
-                duration=180
-            )
-            tracks.append(track)
-            logger.info(f"📀 {track.artist} - {track.title}")
-        
-        return tracks
-        
+            tracks = []
+            seen_file_ids = set()
+            
+            # Parse messages for audio files
+            for update in data.get('result', []):
+                message = update.get('message', {})
+                
+                # Check if message is from our channel
+                chat = message.get('chat', {})
+                chat_id = str(chat.get('id', ''))
+                
+                if chat_id != TELEGRAM_CHANNEL_ID:
+                    continue
+                
+                # Get audio file info
+                audio = message.get('audio')
+                document = message.get('document')
+                
+                file_info = None
+                if audio:
+                    file_info = audio
+                elif document and document.get('mime_type') == 'audio/mpeg':
+                    file_info = document
+                
+                if not file_info:
+                    continue
+                
+                file_id = file_info['file_id']
+                
+                # Avoid duplicates
+                if file_id in seen_file_ids:
+                    continue
+                seen_file_ids.add(file_id)
+                
+                # Get filename and parse artist/title
+                filename = file_info.get('file_name', 'Unknown Track.mp3')
+                parsed = parse_filename(filename)
+                
+                # Get duration
+                duration = file_info.get('duration', 180)
+                
+                # Get thumbnail if available
+                thumbnail_file_id = None
+                if 'thumb' in file_info:
+                    thumbnail_file_id = file_info['thumb'].get('file_id')
+                
+                track = Track(
+                    file_id=file_id,
+                    title=parsed["title"],
+                    artist=parsed["artist"],
+                    duration=duration,
+                    audio_url=f"/api/radio/stream/{file_id}",  # Our proxy endpoint
+                    thumbnail=thumbnail_file_id
+                )
+                
+                tracks.append(track)
+                logger.info(f"📀 {track.artist} - {track.title} ({duration}s)")
+            
+            logger.info(f"✅ Found {len(tracks)} songs in Telegram channel")
+            return tracks
+            
     except Exception as e:
-        logger.error(f"Error fetching Drive playlist: {e}")
+        logger.error(f"❌ Error fetching Telegram playlist: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return []
 
+async def get_telegram_file_url(file_id: str) -> str:
+    """Get direct download URL for Telegram file"""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile"
+        params = {"file_id": file_id}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=10.0)
+            data = response.json()
+            
+            if not data.get('ok'):
+                raise Exception(f"Telegram API error: {data}")
+            
+            file_path = data['result']['file_path']
+            download_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+            
+            return download_url
+            
+    except Exception as e:
+        logger.error(f"❌ Error getting Telegram file URL: {e}")
+        raise
+
 # ==================== RADIO LOGIC ====================
+async def initialize_radio():
+    """Initialize radio with Telegram playlist"""
+    logger.info("🎸 Madrid Rock Radio - Initializing...")
+    
+    if not TELEGRAM_BOT_TOKEN:
+        logger.error("❌ TELEGRAM_BOT_TOKEN not set! Add it in Render dashboard.")
+        logger.error("   Go to: Dashboard → Environment → Add TELEGRAM_BOT_TOKEN")
+        return
+    
+    if not TELEGRAM_CHANNEL_ID:
+        logger.error("❌ TELEGRAM_CHANNEL_ID not set! Add it in Render dashboard.")
+        logger.error("   Go to: Dashboard → Environment → Add TELEGRAM_CHANNEL_ID")
+        return
+    
+    # Fetch songs from Telegram
+    tracks = await fetch_telegram_playlist()
+    
+    if not tracks:
+        logger.error("❌ No songs found! Make sure:")
+        logger.error("   1. Bot is admin in your channel")
+        logger.error("   2. You've sent audio files to the channel")
+        logger.error("   3. TELEGRAM_CHANNEL_ID is correct (including the minus sign!)")
+        return
+    
+    # Shuffle and load playlist
+    import random
+    random.shuffle(tracks)
+    radio_state.playlist = tracks
+    
+    # Start playing first track
+    await play_next_track()
+    
+    logger.info(f"✅ Radio ready! {len(tracks)} songs loaded")
+
 async def play_next_track():
     """Move to next track in playlist"""
     if not radio_state.playlist:
+        logger.warning("⚠️  Playlist empty, reloading...")
+        await initialize_radio()
         return
     
+    # Save current track to history
     if radio_state.current_track:
         radio_state.history.append(radio_state.current_track)
         if len(radio_state.history) > 50:
             radio_state.history = radio_state.history[-50:]
     
+    # Get next track
     radio_state.current_track = radio_state.playlist.pop(0)
     radio_state.position = 0
     radio_state.started_at = time.time()
     
-    # For YouTube tracks, refresh the URL
-    if radio_state.current_track.source == "youtube":
-        radio_state.current_track = await refresh_track_url(radio_state.current_track)
+    logger.info(f"▶️  Now playing: {radio_state.current_track.artist} - {radio_state.current_track.title}")
     
-    logger.info(f"▶️  Now playing: {radio_state.current_track.title}")
-
-async def initialize_radio():
-    """Initialize radio with playlist"""
-    logger.info("🎸 Initializing Madrid Rock Radio...")
-    
-    # Try to load from Drive first
-    drive_tracks = await fetch_drive_playlist()
-    
-    if drive_tracks:
-        logger.info(f"✅ Using {len(drive_tracks)} tracks from Google Drive")
-        radio_state.playlist = drive_tracks
-    else:
-        logger.info("⚠️  No Drive tracks found, using YouTube fallback")
-        for item in DEFAULT_PLAYLIST:
-            info = await asyncio.to_thread(get_audio_url, item["youtube_url"])
-            if info:
-                track = Track(
-                    youtube_url=item["youtube_url"],
-                    title=item.get("title") or info['title'],
-                    artist=item.get("artist") or info['artist'],
-                    duration=info['duration'],
-                    audio_url=info['audio_url'],
-                    thumbnail=info['thumbnail'],
-                    source="youtube"
-                )
-                radio_state.playlist.append(track)
-    
-    if radio_state.playlist:
-        random.shuffle(radio_state.playlist)
-        await play_next_track()
-        logger.info("✅ Radio initialized and playing")
-    else:
-        logger.error("❌ Failed to initialize playlist")
+    # Add track back to end of playlist (infinite loop)
+    radio_state.playlist.append(radio_state.current_track)
 
 # ==================== API ENDPOINTS ====================
 @api_router.get("/radio/state")
 async def get_radio_state():
     """Get current radio state"""
+    if not radio_state.current_track:
+        return {
+            "current_track": None,
+            "position": 0,
+            "is_playing": False,
+            "queue": [],
+            "history": []
+        }
+    
+    # Calculate current position
     current_pos = radio_state.position
-    if radio_state.is_playing and radio_state.current_track:
+    if radio_state.is_playing:
         elapsed = time.time() - radio_state.started_at
         current_pos = elapsed
         
+        # Auto-advance if track finished
         if current_pos >= radio_state.current_track.duration:
             await play_next_track()
             current_pos = 0
@@ -292,129 +279,40 @@ async def skip_track():
     await play_next_track()
     return {"message": "Skipped to next track"}
 
-@api_router.get("/radio/proxy/{file_id}")
-async def proxy_drive_audio(file_id: str, request: Request):
-    """Proxy Google Drive audio with proper Range request support for HTML5 audio"""
-    
-    if not DRIVE_API_ENABLED:
-        raise HTTPException(status_code=503, detail="Drive API not configured")
-    
+@api_router.get("/radio/stream/{file_id}")
+async def stream_telegram_audio(file_id: str):
+    """Stream audio from Telegram"""
     try:
-        # Get file metadata
-        file_metadata = drive_service.files().get(
-            fileId=file_id,
-            fields="name,mimeType,size"
-        ).execute()
+        logger.info(f"🎵 Streaming file: {file_id}")
         
-        file_size = int(file_metadata.get('size', 0))
-        file_name = file_metadata.get('name', 'unknown.mp3')
-        logger.info(f"📀 Streaming: {file_name} ({file_size} bytes)")
+        # Get download URL from Telegram
+        download_url = await get_telegram_file_url(file_id)
         
-        # Parse range header
-        range_header = request.headers.get("range")
-        
-        if range_header:
-            # Handle partial content request (HTTP 206)
-            logger.info(f"🎵 Range request: {range_header}")
-            range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+        # Stream the file
+        async with httpx.AsyncClient() as client:
+            response = await client.get(download_url, timeout=30.0)
             
-            if range_match:
-                start = int(range_match.group(1))
-                end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
-                end = min(end, file_size - 1)
-                chunk_size = end - start + 1
-                
-                logger.info(f"📦 Serving bytes {start}-{end}/{file_size}")
-                
-                # Get media from Drive
-                media_request = drive_service.files().get_media(fileId=file_id)
-                media_request.headers['Range'] = f'bytes={start}-{end}'
-                
-                # Download chunk
-                fh = io.BytesIO()
-                downloader = MediaIoBaseDownload(fh, media_request, chunksize=chunk_size)
-                
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
-                
-                chunk_data = fh.getvalue()
-                
-                return Response(
-                    content=chunk_data,
-                    status_code=206,
-                    headers={
-                        "Content-Type": "audio/mpeg",
-                        "Content-Range": f"bytes {start}-{end}/{file_size}",
-                        "Content-Length": str(len(chunk_data)),
-                        "Accept-Ranges": "bytes",
-                        "Cache-Control": "public, max-age=3600",
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
-                    },
-                    media_type="audio/mpeg"
-                )
-        else:
-            # Full file request (rare)
-            logger.info(f"🎵 Full file request")
-            
-            media_request = drive_service.files().get_media(fileId=file_id)
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, media_request)
-            
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            
-            file_data = fh.getvalue()
+            if response.status_code != 200:
+                raise HTTPException(status_code=500, detail="Failed to fetch audio from Telegram")
             
             return Response(
-                content=file_data,
-                status_code=200,
+                content=response.content,
+                media_type="audio/mpeg",
                 headers={
-                    "Content-Type": "audio/mpeg",
-                    "Content-Length": str(len(file_data)),
                     "Accept-Ranges": "bytes",
                     "Cache-Control": "public, max-age=3600",
                     "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Expose-Headers": "Content-Length, Accept-Ranges",
-                },
-                media_type="audio/mpeg"
+                }
             )
             
     except Exception as e:
-        logger.error(f"❌ Error proxying Drive audio for {file_id}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+        logger.error(f"❌ Error streaming audio: {e}")
+        raise HTTPException(status_code=500, detail=f"Stream error: {str(e)}")
 
 @api_router.get("/radio/playlist")
 async def get_playlist():
     """Get full playlist"""
     return {"playlist": [t.model_dump() for t in radio_state.playlist]}
-
-@api_router.post("/radio/playlist")
-async def add_to_playlist(track_data: TrackCreate):
-    """Add track to playlist"""
-    info = await asyncio.to_thread(get_audio_url, track_data.youtube_url)
-    if not info:
-        raise HTTPException(status_code=400, detail="Could not extract audio")
-    
-    track = Track(
-        youtube_url=track_data.youtube_url,
-        title=track_data.title or info['title'],
-        artist=track_data.artist or info['artist'],
-        duration=info['duration'],
-        audio_url=info['audio_url'],
-        thumbnail=info['thumbnail']
-    )
-    
-    radio_state.playlist.append(track)
-    
-    if not radio_state.current_track:
-        await play_next_track()
-    
-    return track
 
 # ==================== FAVORITES ====================
 @api_router.post("/favorites/save")
@@ -449,9 +347,7 @@ async def get_favorite_stream():
     if not fav or not fav.track:
         raise HTTPException(status_code=404, detail="No favorite saved")
     
-    logger.info(f"Favorite stream requested: {fav.track.title}")
-    if fav.track.source == "youtube":
-        fav.track = await refresh_track_url(fav.track)
+    logger.info(f"❤️  Playing favorite: {fav.track.title}")
     
     return {
         "audio_url": fav.track.audio_url,
@@ -493,11 +389,20 @@ async def startup():
 
 @app.get("/")
 async def root():
-    return {"message": "Madrid Rock Radio API", "status": "running"}
+    return {
+        "message": "Madrid Rock Radio API 🎸",
+        "status": "running",
+        "source": "telegram"
+    }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "drive_enabled": DRIVE_API_ENABLED}
+    telegram_configured = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID)
+    return {
+        "status": "healthy",
+        "telegram_configured": telegram_configured,
+        "tracks_loaded": len(radio_state.playlist)
+    }
 
 if __name__ == "__main__":
     import uvicorn
