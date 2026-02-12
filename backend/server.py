@@ -1,8 +1,8 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict
 import os
 import logging
 import asyncio
@@ -10,6 +10,7 @@ import time
 import uuid
 import re
 import httpx
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,13 +21,13 @@ app = FastAPI(title="Madrid Rock Radio")
 api_router = APIRouter(prefix="/api")
 
 # ==================== TELEGRAM CONFIG ====================
-# Get these from environment variables
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-TELEGRAM_CHANNEL_ID = os.getenv('TELEGRAM_CHANNEL_ID', '')
 
-# You'll set these in Render dashboard:
-# TELEGRAM_BOT_TOKEN = your bot token from BotFather
-# TELEGRAM_CHANNEL_ID = your channel ID (we'll show you how to get this)
+# Store songs in memory (persists during runtime)
+SONGS_DB = {}  # file_id -> Track data
+
+# Track last update_id to avoid processing duplicates
+last_update_id = 0
 
 # ==================== MODELS ====================
 class Track(BaseModel):
@@ -74,41 +75,55 @@ def parse_filename(filename: str) -> dict:
     
     return {"artist": "Unknown Artist", "title": name.strip()}
 
-async def fetch_telegram_playlist() -> List[Track]:
-    """Fetch audio files from Telegram channel"""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHANNEL_ID:
-        logger.error("❌ Telegram credentials not configured!")
-        return []
-    
+async def send_telegram_message(chat_id: str, text: str):
+    """Send a message via Telegram bot"""
     try:
-        logger.info("🔄 Fetching songs from Telegram channel...")
-        
-        # Use Telegram Bot API to get updates/messages
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        data = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown"
+        }
         
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=10.0)
+            response = await client.post(url, json=data, timeout=10.0)
+            return response.json()
+    except Exception as e:
+        logger.error(f"Error sending Telegram message: {e}")
+
+async def process_telegram_updates():
+    """Process incoming Telegram messages (audio files)"""
+    global last_update_id
+    
+    if not TELEGRAM_BOT_TOKEN:
+        logger.error("❌ TELEGRAM_BOT_TOKEN not set!")
+        return
+    
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+        params = {
+            "offset": last_update_id + 1,
+            "timeout": 30
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=35.0)
             data = response.json()
             
             if not data.get('ok'):
                 logger.error(f"❌ Telegram API error: {data}")
-                return []
+                return
             
-            tracks = []
-            seen_file_ids = set()
+            updates = data.get('result', [])
             
-            # Parse messages for audio files
-            for update in data.get('result', []):
+            for update in updates:
+                update_id = update.get('update_id')
+                last_update_id = max(last_update_id, update_id)
+                
                 message = update.get('message', {})
+                chat_id = message.get('chat', {}).get('id')
                 
-                # Check if message is from our channel
-                chat = message.get('chat', {})
-                chat_id = str(chat.get('id', ''))
-                
-                if chat_id != TELEGRAM_CHANNEL_ID:
-                    continue
-                
-                # Get audio file info
+                # Check for audio file
                 audio = message.get('audio')
                 document = message.get('document')
                 
@@ -118,48 +133,102 @@ async def fetch_telegram_playlist() -> List[Track]:
                 elif document and document.get('mime_type') == 'audio/mpeg':
                     file_info = document
                 
-                if not file_info:
-                    continue
+                if file_info:
+                    # Add song to database
+                    file_id = file_info['file_id']
+                    filename = file_info.get('file_name', 'Unknown Track.mp3')
+                    parsed = parse_filename(filename)
+                    duration = file_info.get('duration', 180)
+                    
+                    track = Track(
+                        file_id=file_id,
+                        title=parsed["title"],
+                        artist=parsed["artist"],
+                        duration=duration,
+                        audio_url=f"/api/radio/stream/{file_id}",
+                        thumbnail=None
+                    )
+                    
+                    SONGS_DB[file_id] = track
+                    logger.info(f"✅ Added song: {track.artist} - {track.title}")
+                    
+                    # Confirm to user
+                    await send_telegram_message(
+                        chat_id,
+                        f"✅ *Added to radio:*\n🎵 {track.artist} - {track.title}\n\nTotal songs: {len(SONGS_DB)}"
+                    )
+                    
+                    # Reload playlist
+                    await reload_playlist()
                 
-                file_id = file_info['file_id']
+                # Check for /list command
+                text = message.get('text', '')
+                if text.startswith('/list'):
+                    if not SONGS_DB:
+                        await send_telegram_message(chat_id, "📭 No songs yet! Send me some MP3 files.")
+                    else:
+                        song_list = "\n".join([
+                            f"{i+1}. {t.artist} - {t.title}"
+                            for i, t in enumerate(SONGS_DB.values())
+                        ])
+                        await send_telegram_message(
+                            chat_id,
+                            f"🎸 *Madrid Rock Radio Playlist* ({len(SONGS_DB)} songs)\n\n{song_list}"
+                        )
                 
-                # Avoid duplicates
-                if file_id in seen_file_ids:
-                    continue
-                seen_file_ids.add(file_id)
+                # Check for /clear command
+                if text.startswith('/clear'):
+                    SONGS_DB.clear()
+                    await send_telegram_message(chat_id, "🗑️ Playlist cleared!")
+                    await reload_playlist()
                 
-                # Get filename and parse artist/title
-                filename = file_info.get('file_name', 'Unknown Track.mp3')
-                parsed = parse_filename(filename)
-                
-                # Get duration
-                duration = file_info.get('duration', 180)
-                
-                # Get thumbnail if available
-                thumbnail_file_id = None
-                if 'thumb' in file_info:
-                    thumbnail_file_id = file_info['thumb'].get('file_id')
-                
-                track = Track(
-                    file_id=file_id,
-                    title=parsed["title"],
-                    artist=parsed["artist"],
-                    duration=duration,
-                    audio_url=f"/api/radio/stream/{file_id}",  # Our proxy endpoint
-                    thumbnail=thumbnail_file_id
-                )
-                
-                tracks.append(track)
-                logger.info(f"📀 {track.artist} - {track.title} ({duration}s)")
-            
-            logger.info(f"✅ Found {len(tracks)} songs in Telegram channel")
-            return tracks
+                # Check for /start or /help
+                if text.startswith('/start') or text.startswith('/help'):
+                    help_text = """🎸 *Madrid Rock Radio Bot*
+
+Just send me MP3 files and I'll add them to the radio playlist!
+
+*Commands:*
+/list - Show all songs
+/clear - Clear playlist
+/help - Show this message
+
+*How to add songs:*
+1. Send MP3 file to this chat
+2. Filename format: `Artist - Title.mp3`
+3. That's it! Song is live on the radio 📻"""
+                    await send_telegram_message(chat_id, help_text)
             
     except Exception as e:
-        logger.error(f"❌ Error fetching Telegram playlist: {e}")
+        logger.error(f"❌ Error processing Telegram updates: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return []
+
+async def reload_playlist():
+    """Reload radio playlist from songs database"""
+    import random
+    
+    tracks = list(SONGS_DB.values())
+    random.shuffle(tracks)
+    radio_state.playlist = tracks
+    
+    # If no current track, start playing
+    if not radio_state.current_track and tracks:
+        await play_next_track()
+    
+    logger.info(f"🔄 Playlist reloaded: {len(tracks)} songs")
+
+async def telegram_polling_loop():
+    """Background task that polls Telegram for new messages"""
+    logger.info("🤖 Starting Telegram polling loop...")
+    
+    while True:
+        try:
+            await process_telegram_updates()
+            await asyncio.sleep(2)  # Poll every 2 seconds
+        except Exception as e:
+            logger.error(f"Error in polling loop: {e}")
+            await asyncio.sleep(5)
 
 async def get_telegram_file_url(file_id: str) -> str:
     """Get direct download URL for Telegram file"""
@@ -185,44 +254,30 @@ async def get_telegram_file_url(file_id: str) -> str:
 
 # ==================== RADIO LOGIC ====================
 async def initialize_radio():
-    """Initialize radio with Telegram playlist"""
+    """Initialize radio"""
     logger.info("🎸 Madrid Rock Radio - Initializing...")
     
     if not TELEGRAM_BOT_TOKEN:
-        logger.error("❌ TELEGRAM_BOT_TOKEN not set! Add it in Render dashboard.")
-        logger.error("   Go to: Dashboard → Environment → Add TELEGRAM_BOT_TOKEN")
+        logger.error("❌ TELEGRAM_BOT_TOKEN not set!")
+        logger.error("   Get your token from @BotFather on Telegram")
+        logger.error("   Then add it to Render environment variables")
         return
     
-    if not TELEGRAM_CHANNEL_ID:
-        logger.error("❌ TELEGRAM_CHANNEL_ID not set! Add it in Render dashboard.")
-        logger.error("   Go to: Dashboard → Environment → Add TELEGRAM_CHANNEL_ID")
-        return
+    logger.info("✅ Telegram bot configured")
+    logger.info(f"📻 Songs in database: {len(SONGS_DB)}")
     
-    # Fetch songs from Telegram
-    tracks = await fetch_telegram_playlist()
-    
-    if not tracks:
-        logger.error("❌ No songs found! Make sure:")
-        logger.error("   1. Bot is admin in your channel")
-        logger.error("   2. You've sent audio files to the channel")
-        logger.error("   3. TELEGRAM_CHANNEL_ID is correct (including the minus sign!)")
-        return
-    
-    # Shuffle and load playlist
-    import random
-    random.shuffle(tracks)
-    radio_state.playlist = tracks
-    
-    # Start playing first track
-    await play_next_track()
-    
-    logger.info(f"✅ Radio ready! {len(tracks)} songs loaded")
+    if SONGS_DB:
+        await reload_playlist()
+    else:
+        logger.info("💡 No songs yet! Send MP3 files to your bot on Telegram to get started.")
+        logger.info("   1. Open Telegram and search for your bot")
+        logger.info("   2. Send /start")
+        logger.info("   3. Send MP3 files directly to the bot")
 
 async def play_next_track():
     """Move to next track in playlist"""
     if not radio_state.playlist:
-        logger.warning("⚠️  Playlist empty, reloading...")
-        await initialize_radio()
+        logger.warning("⚠️  Playlist empty")
         return
     
     # Save current track to history
@@ -283,7 +338,7 @@ async def skip_track():
 async def stream_telegram_audio(file_id: str):
     """Stream audio from Telegram"""
     try:
-        logger.info(f"🎵 Streaming file: {file_id}")
+        logger.info(f"🎵 Streaming file: {file_id[:20]}...")
         
         # Get download URL from Telegram
         download_url = await get_telegram_file_url(file_id)
@@ -372,6 +427,15 @@ async def get_share_data():
         "track": track.model_dump()
     }
 
+# ==================== ADMIN ====================
+@api_router.get("/admin/songs")
+async def get_all_songs():
+    """Get all songs in database (for debugging)"""
+    return {
+        "total": len(SONGS_DB),
+        "songs": [t.model_dump() for t in SONGS_DB.values()]
+    }
+
 # ==================== SETUP ====================
 app.include_router(api_router)
 
@@ -385,22 +449,29 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
+    # Initialize radio
     await initialize_radio()
+    
+    # Start Telegram polling in background
+    asyncio.create_task(telegram_polling_loop())
+    logger.info("🤖 Telegram bot is listening for songs...")
 
 @app.get("/")
 async def root():
     return {
         "message": "Madrid Rock Radio API 🎸",
         "status": "running",
-        "source": "telegram"
+        "source": "telegram",
+        "songs": len(SONGS_DB)
     }
 
 @app.get("/health")
 async def health_check():
-    telegram_configured = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID)
+    telegram_configured = bool(TELEGRAM_BOT_TOKEN)
     return {
         "status": "healthy",
         "telegram_configured": telegram_configured,
+        "songs_in_db": len(SONGS_DB),
         "tracks_loaded": len(radio_state.playlist)
     }
 
