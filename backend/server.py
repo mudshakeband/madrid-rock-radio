@@ -350,6 +350,19 @@ async def get_stream_url():
         "position": get_current_position()
     }
 
+@api_router.options("/radio/proxy/{file_id}")
+async def proxy_options(file_id: str):
+    """Handle CORS preflight for audio proxy"""
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Range, Content-Type",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
+
 @api_router.get("/radio/proxy/{file_id}")
 async def proxy_drive_audio(file_id: str, request: Request):
     """Proxy Google Drive audio with proper streaming support (range requests)"""
@@ -359,14 +372,20 @@ async def proxy_drive_audio(file_id: str, request: Request):
         # Parse range header from browser
         range_header = request.headers.get("range")
         
-        headers_to_send = {}
+        headers_to_send = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
         if range_header:
             headers_to_send["Range"] = range_header
-            logger.info(f"Range request: {range_header}")
+            logger.info(f"🎵 Range request for {file_id}: {range_header}")
+        else:
+            logger.info(f"🎵 Full file request for {file_id}")
         
         async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
             # Stream the response
             async with client.stream("GET", drive_url, headers=headers_to_send) as response:
+                logger.info(f"Drive response: {response.status_code}")
+                
                 if response.status_code not in [200, 206]:
                     logger.error(f"Drive returned {response.status_code} for file {file_id}")
                     raise HTTPException(
@@ -374,28 +393,41 @@ async def proxy_drive_audio(file_id: str, request: Request):
                         detail="Could not fetch audio from Drive"
                     )
                 
-                # Forward important headers
+                # Forward important headers - NO CACHING to avoid 304
                 response_headers = {
                     "Accept-Ranges": "bytes",
                     "Content-Type": "audio/mpeg",
-                    "Cache-Control": "public, max-age=31536000",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Range",
+                    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
                 }
                 
                 # Forward content-length if available
                 if "content-length" in response.headers:
                     response_headers["Content-Length"] = response.headers["content-length"]
+                    logger.info(f"Content-Length: {response.headers['content-length']}")
                 
                 # Forward content-range for partial responses
                 if "content-range" in response.headers:
                     response_headers["Content-Range"] = response.headers["content-range"]
+                    logger.info(f"Content-Range: {response.headers['content-range']}")
                 
                 # Stream the content in chunks
                 async def stream_generator():
-                    async for chunk in response.aiter_bytes(chunk_size=65536):
-                        yield chunk
+                    try:
+                        async for chunk in response.aiter_bytes(chunk_size=65536):
+                            yield chunk
+                    except Exception as e:
+                        logger.error(f"Error streaming chunk: {e}")
+                        raise
                 
                 # Return 206 for range requests, 200 otherwise
                 status_code = 206 if response.status_code == 206 else 200
+                logger.info(f"Returning status {status_code}")
                 
                 return StreamingResponse(
                     stream_generator(),
