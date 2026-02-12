@@ -10,7 +10,18 @@ import asyncio
 import random
 import time
 import uuid
+import json
+import re
 from datetime import datetime
+
+# Try to import Google Drive API (optional)
+try:
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    GOOGLE_IMPORTS_AVAILABLE = True
+except ImportError:
+    GOOGLE_IMPORTS_AVAILABLE = False
+    logging.warning("Google API libraries not installed - Drive integration disabled")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,15 +31,44 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Madrid Rock Radio")
 api_router = APIRouter(prefix="/api")
 
+# ==================== GOOGLE DRIVE CONFIG ====================
+DRIVE_FOLDER_ID = "10bt7zLoZrZH6JOJQQqPNauUsZ82x3_sm"
+DRIVE_API_ENABLED = False
+drive_service = None
+
+# Try to set up Drive API from environment variable
+if GOOGLE_IMPORTS_AVAILABLE:
+    service_account_json = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON')
+    
+    if service_account_json:
+        try:
+            # Parse JSON from environment variable
+            creds_dict = json.loads(service_account_json)
+            credentials = service_account.Credentials.from_service_account_info(
+                creds_dict,
+                scopes=['https://www.googleapis.com/auth/drive.readonly']
+            )
+            drive_service = build('drive', 'v3', credentials=credentials)
+            DRIVE_API_ENABLED = True
+            logger.info("✅ Google Drive API enabled (from environment variable)")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Drive API: {e}")
+    else:
+        logger.info("ℹ️  No GOOGLE_SERVICE_ACCOUNT_JSON environment variable - Drive API disabled")
+else:
+    logger.info("ℹ️  Google API libraries not installed - using YouTube only")
+
 # ==================== MODELS ====================
 class Track(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    youtube_url: str
+    youtube_url: Optional[str] = None  # Optional now (for Drive files)
+    file_id: Optional[str] = None  # Google Drive file ID
     title: str = ""
     artist: str = ""
     duration: int = 0
     audio_url: Optional[str] = None
     thumbnail: Optional[str] = None
+    source: str = "youtube"  # 'youtube' or 'drive'
 
 class TrackCreate(BaseModel):
     youtube_url: str
@@ -109,18 +149,101 @@ async def refresh_track_url(track: Track) -> Track:
         logger.error(f"Error refreshing URL: {e}")
     return track
 
+# ==================== GOOGLE DRIVE HELPERS ====================
+def parse_filename(filename: str) -> dict:
+    """Parse MP3 filename to extract artist and title"""
+    # Remove extension
+    name = filename.rsplit('.', 1)[0]
+    
+    # Remove track numbers
+    name = re.sub(r'^\d+\s*[-_.]?\s*', '', name)
+    
+    # Split by " - "
+    if ' - ' in name:
+        parts = name.split(' - ', 1)
+        return {"artist": parts[0].strip(), "title": parts[1].strip()}
+    
+    if '-' in name:
+        parts = name.split('-', 1)
+        return {"artist": parts[0].strip(), "title": parts[1].strip()}
+    
+    return {"artist": "Unknown Artist", "title": name.strip()}
+
+def get_drive_direct_link(file_id: str) -> str:
+    """Get direct download URL for Google Drive file"""
+    return f"https://drive.google.com/uc?export=download&id={file_id}"
+
+async def fetch_drive_playlist() -> List[Track]:
+    """Fetch MP3 files from Google Drive folder"""
+    if not DRIVE_API_ENABLED:
+        return []
+    
+    try:
+        logger.info("🔄 Scanning Google Drive folder...")
+        
+        query = f"'{DRIVE_FOLDER_ID}' in parents and (mimeType='audio/mpeg' or name contains '.mp3') and trashed=false"
+        
+        results = drive_service.files().list(
+            q=query,
+            fields="files(id, name, size)",
+            orderBy="name",
+            pageSize=100
+        ).execute()
+        
+        files = results.get('files', [])
+        logger.info(f"✅ Found {len(files)} MP3 files in Drive")
+        
+        tracks = []
+        for file_info in files:
+            file_id = file_info['id']
+            filename = file_info['name']
+            
+            parsed = parse_filename(filename)
+            
+            track = Track(
+                file_id=file_id,
+                title=parsed["title"],
+                artist=parsed["artist"],
+                filename=filename,
+                audio_url=get_drive_direct_link(file_id),
+                source="drive",
+                duration=180  # Default 3 min
+            )
+            tracks.append(track)
+            logger.info(f"📀 {track.artist} - {track.title}")
+        
+        return tracks
+        
+    except Exception as e:
+        logger.error(f"❌ Error fetching from Drive: {e}")
+        return []
+
 # ==================== RADIO MANAGEMENT ====================
 async def initialize_radio():
-    """Initialize radio with default playlist"""
+    """Initialize radio - prefer Google Drive, fall back to YouTube"""
     global radio_state
     
     if not radio_state.playlist:
+        # Try Google Drive first
+        if DRIVE_API_ENABLED:
+            logger.info("🎵 Loading playlist from Google Drive...")
+            drive_tracks = await fetch_drive_playlist()
+            if drive_tracks:
+                radio_state.playlist = drive_tracks
+                random.shuffle(radio_state.playlist)
+                await play_next_track()
+                logger.info(f"✅ Radio started with {len(drive_tracks)} Drive tracks")
+                return
+        
+        # Fall back to YouTube
+        logger.info("🎵 Loading playlist from YouTube...")
         for track_data in DEFAULT_PLAYLIST:
-            track = Track(**track_data)
+            track = Track(**track_data, source="youtube")
             radio_state.playlist.append(track)
         
         random.shuffle(radio_state.playlist)
         await play_next_track()
+        logger.info(f"✅ Radio started with {len(DEFAULT_PLAYLIST)} YouTube tracks")
 
 async def play_next_track():
     """Advance to next track"""
@@ -143,9 +266,11 @@ async def play_next_track():
     else:
         radio_state.current_track = radio_state.playlist[0]
     
-    # ALWAYS refresh URL when changing tracks (YouTube URLs expire)
-    logger.info(f"=== Changing to track: {radio_state.current_track.title} ===")
-    radio_state.current_track = await refresh_track_url(radio_state.current_track)
+    logger.info(f"=== Changing to: {radio_state.current_track.title} ({radio_state.current_track.source}) ===")
+    
+    # Only refresh YouTube URLs (Drive URLs don't expire)
+    if radio_state.current_track.source == "youtube":
+        radio_state.current_track = await refresh_track_url(radio_state.current_track)
     
     radio_state.started_at = time.time()
     radio_state.position = 0
@@ -201,13 +326,14 @@ async def get_radio_state():
 
 @api_router.get("/radio/stream")
 async def get_stream_url():
-    """Get audio stream URL - always return fresh URL"""
+    """Get audio stream URL - refresh YouTube, Drive URLs are permanent"""
     if not radio_state.current_track:
         raise HTTPException(status_code=404, detail="No track playing")
     
-    # Always refresh URL to ensure it's valid
-    logger.info(f"Stream requested for: {radio_state.current_track.title}")
-    radio_state.current_track = await refresh_track_url(radio_state.current_track)
+    # Only refresh YouTube URLs
+    if radio_state.current_track.source == "youtube":
+        logger.info(f"Refreshing YouTube stream: {radio_state.current_track.title}")
+        radio_state.current_track = await refresh_track_url(radio_state.current_track)
     
     if not radio_state.current_track.audio_url:
         raise HTTPException(status_code=404, detail="Could not get audio URL")
