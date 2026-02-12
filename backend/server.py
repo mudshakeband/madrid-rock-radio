@@ -12,13 +12,14 @@ import time
 import uuid
 import json
 import re
-import httpx
+import io
 from datetime import datetime
 
 # Try to import Google Drive API (optional)
 try:
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
     GOOGLE_IMPORTS_AVAILABLE = True
 except ImportError:
     GOOGLE_IMPORTS_AVAILABLE = False
@@ -62,14 +63,14 @@ else:
 # ==================== MODELS ====================
 class Track(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    youtube_url: Optional[str] = None  # Optional now (for Drive files)
-    file_id: Optional[str] = None  # Google Drive file ID
+    youtube_url: Optional[str] = None
+    file_id: Optional[str] = None
     title: str = ""
     artist: str = ""
     duration: int = 0
     audio_url: Optional[str] = None
     thumbnail: Optional[str] = None
-    source: str = "youtube"  # 'youtube' or 'drive'
+    source: str = "youtube"
 
 class TrackCreate(BaseModel):
     youtube_url: str
@@ -97,10 +98,6 @@ DEFAULT_PLAYLIST = [
     {"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "title": "Never Gonna Give You Up", "artist": "Rick Astley"},
     {"youtube_url": "https://www.youtube.com/watch?v=fJ9rUzIMcZQ", "title": "Bohemian Rhapsody", "artist": "Queen"},
     {"youtube_url": "https://www.youtube.com/watch?v=hTWKbfoikeg", "title": "Smells Like Teen Spirit", "artist": "Nirvana"},
-    {"youtube_url": "https://www.youtube.com/watch?v=kJQP7kiw5Fk", "title": "Despacito", "artist": "Luis Fonsi"},
-    {"youtube_url": "https://www.youtube.com/watch?v=9bZkp7q19f0", "title": "Gangnam Style", "artist": "PSY"},
-    {"youtube_url": "https://www.youtube.com/watch?v=60ItHLz5WEA", "title": "Faded", "artist": "Alan Walker"},
-    {"youtube_url": "https://www.youtube.com/watch?v=RgKAFK5djSk", "title": "Waka Waka", "artist": "Shakira"},
 ]
 
 # ==================== YT-DLP HELPERS ====================
@@ -135,7 +132,7 @@ def get_audio_url(youtube_url: str) -> dict:
         return None
 
 async def refresh_track_url(track: Track) -> Track:
-    """Refresh audio URL for a track - ALWAYS refresh to ensure fresh URLs"""
+    """Refresh audio URL for a track"""
     try:
         logger.info(f"Fetching fresh URL for: {track.title}")
         info = await asyncio.to_thread(get_audio_url, track.youtube_url)
@@ -153,13 +150,9 @@ async def refresh_track_url(track: Track) -> Track:
 # ==================== GOOGLE DRIVE HELPERS ====================
 def parse_filename(filename: str) -> dict:
     """Parse MP3 filename to extract artist and title"""
-    # Remove extension
     name = filename.rsplit('.', 1)[0]
-    
-    # Remove track numbers
     name = re.sub(r'^\d+\s*[-_.]?\s*', '', name)
     
-    # Split by " - "
     if ' - ' in name:
         parts = name.split(' - ', 1)
         return {"artist": parts[0].strip(), "title": parts[1].strip()}
@@ -171,11 +164,7 @@ def parse_filename(filename: str) -> dict:
     return {"artist": "Unknown Artist", "title": name.strip()}
 
 def get_drive_direct_link(file_id: str) -> str:
-    """Get streamable URL for Google Drive file via backend proxy
-    
-    Uses backend as proxy to avoid CORS issues with Google Drive
-    """
-    # Return URL to our proxy endpoint
+    """Get streamable URL for Google Drive file via backend proxy"""
     return f"/api/radio/proxy/{file_id}"
 
 async def fetch_drive_playlist() -> List[Track]:
@@ -211,7 +200,7 @@ async def fetch_drive_playlist() -> List[Track]:
                 artist=parsed["artist"],
                 audio_url=get_drive_direct_link(file_id),
                 source="drive",
-                duration=180  # Default 3 min
+                duration=180
             )
             tracks.append(track)
             logger.info(f"📀 {track.artist} - {track.title}")
@@ -222,150 +211,90 @@ async def fetch_drive_playlist() -> List[Track]:
         logger.error(f"Error fetching Drive playlist: {e}")
         return []
 
-async def initialize_radio():
-    """Initialize radio with tracks"""
-    logger.info("🎵 Starting Madrid Rock Radio...")
+# ==================== RADIO LOGIC ====================
+async def play_next_track():
+    """Move to next track in playlist"""
+    if not radio_state.playlist:
+        return
     
-    # Try Drive first
+    if radio_state.current_track:
+        radio_state.history.append(radio_state.current_track)
+        if len(radio_state.history) > 50:
+            radio_state.history = radio_state.history[-50:]
+    
+    radio_state.current_track = radio_state.playlist.pop(0)
+    radio_state.position = 0
+    radio_state.started_at = time.time()
+    
+    # For YouTube tracks, refresh the URL
+    if radio_state.current_track.source == "youtube":
+        radio_state.current_track = await refresh_track_url(radio_state.current_track)
+    
+    logger.info(f"▶️  Now playing: {radio_state.current_track.title}")
+
+async def initialize_radio():
+    """Initialize radio with playlist"""
+    logger.info("🎸 Initializing Madrid Rock Radio...")
+    
+    # Try to load from Drive first
     drive_tracks = await fetch_drive_playlist()
     
     if drive_tracks:
-        logger.info(f"✅ Loaded {len(drive_tracks)} tracks from Google Drive")
+        logger.info(f"✅ Using {len(drive_tracks)} tracks from Google Drive")
         radio_state.playlist = drive_tracks
     else:
-        logger.info("⚠️  No Drive tracks available, loading YouTube defaults...")
+        logger.info("⚠️  No Drive tracks found, using YouTube fallback")
         for item in DEFAULT_PLAYLIST:
-            track = Track(
-                youtube_url=item["youtube_url"],
-                title=item["title"],
-                artist=item["artist"],
-                source="youtube"
-            )
-            radio_state.playlist.append(track)
+            info = await asyncio.to_thread(get_audio_url, item["youtube_url"])
+            if info:
+                track = Track(
+                    youtube_url=item["youtube_url"],
+                    title=item.get("title") or info['title'],
+                    artist=item.get("artist") or info['artist'],
+                    duration=info['duration'],
+                    audio_url=info['audio_url'],
+                    thumbnail=info['thumbnail'],
+                    source="youtube"
+                )
+                radio_state.playlist.append(track)
     
-    # Shuffle playlist for variety
-    random.shuffle(radio_state.playlist)
-    
-    # Start first track
     if radio_state.playlist:
+        random.shuffle(radio_state.playlist)
         await play_next_track()
-        logger.info(f"🎸 Radio initialized with {len(radio_state.playlist)} tracks")
+        logger.info("✅ Radio initialized and playing")
     else:
-        logger.warning("⚠️  No tracks available!")
+        logger.error("❌ Failed to initialize playlist")
 
-async def play_next_track():
-    """Advance to next track in playlist"""
-    if not radio_state.playlist:
-        logger.warning("No playlist available")
-        return
-    
-    # Move current to history
-    if radio_state.current_track:
-        radio_state.history.insert(0, radio_state.current_track)
-        radio_state.history = radio_state.history[:5]
-    
-    # Get next track (rotate playlist)
-    if radio_state.current_track:
-        current_idx = next((i for i, t in enumerate(radio_state.playlist) 
-                          if t.id == radio_state.current_track.id), -1)
-        next_idx = (current_idx + 1) % len(radio_state.playlist)
-        radio_state.current_track = radio_state.playlist[next_idx]
-    else:
-        radio_state.current_track = radio_state.playlist[0]
-    
-    logger.info(f"=== Changing to: {radio_state.current_track.title} ({radio_state.current_track.source}) ===")
-    
-    # Only refresh YouTube URLs (Drive URLs don't expire)
-    if radio_state.current_track.source == "youtube":
-        radio_state.current_track = await refresh_track_url(radio_state.current_track)
-    
-    radio_state.started_at = time.time()
-    radio_state.position = 0
-    radio_state.is_playing = True
-    
-    logger.info(f"▶ Now playing: {radio_state.current_track.title}")
-
-def get_current_position() -> float:
-    """Calculate current playback position"""
-    if not radio_state.is_playing or not radio_state.current_track:
-        return radio_state.position
-    
-    elapsed = time.time() - radio_state.started_at
-    return elapsed % max(radio_state.current_track.duration, 1)
-
-def get_upcoming_tracks(count: int = 3) -> List[Track]:
-    """Get next N tracks in queue"""
-    if not radio_state.current_track or not radio_state.playlist:
-        return []
-    
-    current_idx = next((i for i, t in enumerate(radio_state.playlist) 
-                       if t.id == radio_state.current_track.id), 0)
-    
-    upcoming = []
-    for i in range(1, count + 1):
-        next_idx = (current_idx + i) % len(radio_state.playlist)
-        upcoming.append(radio_state.playlist[next_idx])
-    
-    return upcoming
-
-# ==================== API ROUTES ====================
+# ==================== API ENDPOINTS ====================
 @api_router.get("/radio/state")
 async def get_radio_state():
     """Get current radio state"""
-    current_position = get_current_position()
-    
-    # Check if track ended - advance to next
-    if (radio_state.current_track and 
-        current_position >= radio_state.current_track.duration - 1):
-        logger.info(f"Track ended: {radio_state.current_track.title}")
-        await play_next_track()
-        current_position = 0
+    current_pos = radio_state.position
+    if radio_state.is_playing and radio_state.current_track:
+        elapsed = time.time() - radio_state.started_at
+        current_pos = elapsed
+        
+        if current_pos >= radio_state.current_track.duration:
+            await play_next_track()
+            current_pos = 0
     
     return {
         "current_track": radio_state.current_track.model_dump() if radio_state.current_track else None,
-        "position": current_position,
+        "position": current_pos,
         "is_playing": radio_state.is_playing,
-        "started_at": radio_state.started_at,
-        "playlist_count": len(radio_state.playlist),
-        "just_played": radio_state.history[0].model_dump() if radio_state.history else None,
-        "up_next": [t.model_dump() for t in get_upcoming_tracks(3)]
+        "queue": [t.model_dump() for t in radio_state.playlist[:5]],
+        "history": [t.model_dump() for t in radio_state.history[-5:]]
     }
 
-@api_router.get("/radio/stream")
-async def get_stream_url():
-    """Get audio stream URL - refresh YouTube, Drive URLs are permanent"""
-    if not radio_state.current_track:
-        raise HTTPException(status_code=404, detail="No track playing")
-    
-    # Only refresh YouTube URLs
-    if radio_state.current_track.source == "youtube":
-        logger.info(f"Refreshing YouTube stream: {radio_state.current_track.title}")
-        radio_state.current_track = await refresh_track_url(radio_state.current_track)
-    
-    if not radio_state.current_track.audio_url:
-        raise HTTPException(status_code=404, detail="Could not get audio URL")
-    
-    return {
-        "audio_url": radio_state.current_track.audio_url,
-        "position": get_current_position()
-    }
-
-@api_router.options("/radio/proxy/{file_id}")
-async def proxy_options(file_id: str):
-    """Handle CORS preflight for audio proxy"""
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Range, Content-Type",
-            "Access-Control-Max-Age": "3600",
-        }
-    )
+@api_router.post("/radio/next")
+async def skip_track():
+    """Skip to next track"""
+    await play_next_track()
+    return {"message": "Skipped to next track"}
 
 @api_router.get("/radio/proxy/{file_id}")
 async def proxy_drive_audio(file_id: str, request: Request):
-    """Proxy Google Drive audio with proper streaming support (range requests)"""
+    """Proxy Google Drive audio with proper Range request support for HTML5 audio"""
     
     if not DRIVE_API_ENABLED:
         raise HTTPException(status_code=503, detail="Drive API not configured")
@@ -381,42 +310,34 @@ async def proxy_drive_audio(file_id: str, request: Request):
         file_name = file_metadata.get('name', 'unknown.mp3')
         logger.info(f"📀 Streaming: {file_name} ({file_size} bytes)")
         
-        # Parse range header from browser
+        # Parse range header
         range_header = request.headers.get("range")
         
         if range_header:
-            # Handle range request
+            # Handle partial content request (HTTP 206)
             logger.info(f"🎵 Range request: {range_header}")
             range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
             
             if range_match:
                 start = int(range_match.group(1))
                 end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
-                
-                # Ensure end doesn't exceed file size
                 end = min(end, file_size - 1)
                 chunk_size = end - start + 1
                 
                 logger.info(f"📦 Serving bytes {start}-{end}/{file_size}")
                 
-                # Get media request from Drive API
+                # Get media from Drive
                 media_request = drive_service.files().get_media(fileId=file_id)
-                
-                # Set range in the request headers
                 media_request.headers['Range'] = f'bytes={start}-{end}'
                 
-                # Stream the chunk
-                import io
+                # Download chunk
                 fh = io.BytesIO()
-                
-                from googleapiclient.http import MediaIoBaseDownload
                 downloader = MediaIoBaseDownload(fh, media_request, chunksize=chunk_size)
                 
                 done = False
                 while not done:
                     status, done = downloader.next_chunk()
                 
-                # Get the data
                 chunk_data = fh.getvalue()
                 
                 return Response(
@@ -427,23 +348,18 @@ async def proxy_drive_audio(file_id: str, request: Request):
                         "Content-Range": f"bytes {start}-{end}/{file_size}",
                         "Content-Length": str(len(chunk_data)),
                         "Accept-Ranges": "bytes",
-                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Cache-Control": "public, max-age=3600",
                         "Access-Control-Allow-Origin": "*",
                         "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
                     },
                     media_type="audio/mpeg"
                 )
         else:
-            # Full file request (rare - usually browser requests ranges)
+            # Full file request (rare)
             logger.info(f"🎵 Full file request")
             
-            # Stream entire file
             media_request = drive_service.files().get_media(fileId=file_id)
-            
-            import io
             fh = io.BytesIO()
-            
-            from googleapiclient.http import MediaIoBaseDownload
             downloader = MediaIoBaseDownload(fh, media_request)
             
             done = False
@@ -459,7 +375,7 @@ async def proxy_drive_audio(file_id: str, request: Request):
                     "Content-Type": "audio/mpeg",
                     "Content-Length": str(len(file_data)),
                     "Accept-Ranges": "bytes",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Cache-Control": "public, max-age=3600",
                     "Access-Control-Allow-Origin": "*",
                     "Access-Control-Expose-Headers": "Content-Length, Accept-Ranges",
                 },
@@ -471,14 +387,6 @@ async def proxy_drive_audio(file_id: str, request: Request):
         import traceback
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
-                
-    except httpx.HTTPError as e:
-        logger.error(f"HTTP error proxying Drive audio: {e}")
-        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error proxying Drive audio: {e}")
-        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
-
 
 @api_router.get("/radio/playlist")
 async def get_playlist():
@@ -536,14 +444,14 @@ async def get_favorite():
 
 @api_router.get("/favorites/stream")
 async def get_favorite_stream():
-    """Get favorite track stream URL - always fresh"""
+    """Get favorite track stream URL"""
     fav = user_favorites.get("main")
     if not fav or not fav.track:
         raise HTTPException(status_code=404, detail="No favorite saved")
     
-    # Always refresh URL
     logger.info(f"Favorite stream requested: {fav.track.title}")
-    fav.track = await refresh_track_url(fav.track)
+    if fav.track.source == "youtube":
+        fav.track = await refresh_track_url(fav.track)
     
     return {
         "audio_url": fav.track.audio_url,
@@ -582,6 +490,14 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     await initialize_radio()
+
+@app.get("/")
+async def root():
+    return {"message": "Madrid Rock Radio API", "status": "running"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "drive_enabled": DRIVE_API_ENABLED}
 
 if __name__ == "__main__":
     import uvicorn
