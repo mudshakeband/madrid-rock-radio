@@ -179,7 +179,7 @@ def get_drive_direct_link(file_id: str) -> str:
     
     IMPORTANT: Files must be set to "Anyone with the link can view"
     """
-    return f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0&confirm=t"
+    return f"https://docs.google.com/uc?export=open&id={file_id}"
 
 async def fetch_drive_playlist() -> List[Track]:
     """Fetch MP3 files from Google Drive folder"""
