@@ -1,5 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import Response
+from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, Request
+from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
@@ -305,8 +305,10 @@ async def get_radio_state():
             "current_track": None,
             "position": 0,
             "is_playing": False,
-            "queue": [],
-            "history": []
+            "started_at": 0,
+            "playlist_count": len(SONGS_DB),
+            "just_played": None,
+            "up_next": []
         }
     
     # Calculate current position
@@ -320,12 +322,20 @@ async def get_radio_state():
             await play_next_track()
             current_pos = 0
     
+    # Get upcoming tracks
+    up_next = radio_state.playlist[:3] if len(radio_state.playlist) >= 3 else radio_state.playlist
+    
+    # Get last played
+    just_played = radio_state.history[-1] if radio_state.history else None
+    
     return {
         "current_track": radio_state.current_track.model_dump() if radio_state.current_track else None,
         "position": current_pos,
         "is_playing": radio_state.is_playing,
-        "queue": [t.model_dump() for t in radio_state.playlist[:5]],
-        "history": [t.model_dump() for t in radio_state.history[-5:]]
+        "started_at": radio_state.started_at,
+        "playlist_count": len(SONGS_DB),
+        "just_played": just_played.model_dump() if just_played else None,
+        "up_next": [t.model_dump() for t in up_next]
     }
 
 @api_router.post("/radio/next")
@@ -334,31 +344,87 @@ async def skip_track():
     await play_next_track()
     return {"message": "Skipped to next track"}
 
+@api_router.get("/radio/stream")
+async def get_stream_url():
+    """Get current track stream URL - required by frontend"""
+    if not radio_state.current_track:
+        raise HTTPException(status_code=404, detail="No track playing")
+    
+    # Calculate current position
+    current_pos = radio_state.position
+    if radio_state.is_playing:
+        elapsed = time.time() - radio_state.started_at
+        current_pos = elapsed
+    
+    # Return the audio URL and current position
+    return {
+        "audio_url": radio_state.current_track.audio_url,
+        "position": current_pos
+    }
+
 @api_router.get("/radio/stream/{file_id}")
-async def stream_telegram_audio(file_id: str):
-    """Stream audio from Telegram"""
+async def stream_telegram_audio(file_id: str, request: Request):
+    """Stream audio from Telegram with range request support"""
     try:
         logger.info(f"🎵 Streaming file: {file_id[:20]}...")
         
         # Get download URL from Telegram
         download_url = await get_telegram_file_url(file_id)
         
-        # Stream the file
+        # Parse range header from browser
+        range_header = request.headers.get("range")
+        
+        headers_to_send = {}
+        if range_header:
+            headers_to_send["Range"] = range_header
+            logger.info(f"📦 Range request: {range_header}")
+        
+        # Stream the file from Telegram
         async with httpx.AsyncClient() as client:
-            response = await client.get(download_url, timeout=30.0)
-            
-            if response.status_code != 200:
-                raise HTTPException(status_code=500, detail="Failed to fetch audio from Telegram")
-            
-            return Response(
-                content=response.content,
-                media_type="audio/mpeg",
-                headers={
+            async with client.stream("GET", download_url, headers=headers_to_send, timeout=60.0) as response:
+                
+                if response.status_code not in [200, 206]:
+                    logger.error(f"❌ Telegram returned {response.status_code}")
+                    raise HTTPException(status_code=500, detail="Failed to fetch audio from Telegram")
+                
+                # Prepare response headers
+                response_headers = {
+                    "Content-Type": "audio/mpeg",
                     "Accept-Ranges": "bytes",
-                    "Cache-Control": "public, max-age=3600",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
                     "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
                 }
-            )
+                
+                # Forward content-length if available
+                if "content-length" in response.headers:
+                    response_headers["Content-Length"] = response.headers["content-length"]
+                
+                # Forward content-range for partial responses
+                if "content-range" in response.headers:
+                    response_headers["Content-Range"] = response.headers["content-range"]
+                    logger.info(f"📦 Serving: {response.headers['content-range']}")
+                
+                # Stream the content in chunks
+                from fastapi.responses import StreamingResponse
+                
+                async def stream_generator():
+                    try:
+                        async for chunk in response.aiter_bytes(chunk_size=65536):
+                            yield chunk
+                    except Exception as e:
+                        logger.error(f"Error streaming chunk: {e}")
+                        raise
+                
+                # Return 206 for range requests, 200 otherwise
+                status_code = 206 if response.status_code == 206 else 200
+                
+                return StreamingResponse(
+                    stream_generator(),
+                    status_code=status_code,
+                    headers=response_headers,
+                    media_type="audio/mpeg"
+                )
             
     except Exception as e:
         logger.error(f"❌ Error streaming audio: {e}")
