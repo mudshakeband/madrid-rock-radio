@@ -50,6 +50,7 @@ function App() {
   const [favorite, setFavorite] = useState(null);
   const [playingFavorite, setPlayingFavorite] = useState(false);
   const [favoritePosition, setFavoritePosition] = useState(0);
+  const [currentTrackId, setCurrentTrackId] = useState(null); // Track which song is loaded
   
   const audioRef = useRef(null);
   const syncIntervalRef = useRef(null);
@@ -64,26 +65,39 @@ function App() {
       
       // Update audio if needed (only when listening to radio, not favorite)
       if (!playingFavorite && state.current_track && audioRef.current && isTunedIn) {
-        const currentSrc = audioRef.current.src;
+        // Check if track changed by comparing track IDs, not URLs
+        const newTrackId = state.current_track.id;
         
-        // Check if track changed
-        if (state.current_track.audio_url && 
-            !currentSrc.includes(state.current_track.audio_url.split('?')[0].slice(-20))) {
+        if (newTrackId !== currentTrackId) {
+          console.log(`🔄 Track changed from ${currentTrackId} to ${newTrackId}`);
           const streamResponse = await axios.get(`${API}/radio/stream`);
           if (streamResponse.data.audio_url) {
-            audioRef.current.src = streamResponse.data.audio_url;
-            audioRef.current.currentTime = state.position;
+            // CRITICAL FIX: Add cache buster for Drive URLs
+            let audioUrl = streamResponse.data.audio_url;
+            if (audioUrl.includes('/api/radio/proxy/')) {
+              audioUrl = `${audioUrl}?t=${Date.now()}`;
+            }
+            
+            console.log(`🎵 Loading new track: ${audioUrl}`);
+            audioRef.current.src = audioUrl;
+            audioRef.current.currentTime = state.position || 0;
             audioRef.current.volume = isMuted ? 0 : volume / 10;
-            // Play even if muted - browser needs it running
-            audioRef.current.play().catch(console.error);
+            setCurrentTrackId(newTrackId);
+            
+            // Play
+            audioRef.current.play().catch(err => {
+              console.error("Error playing audio:", err);
+              setError("Playback failed. Try refreshing.");
+            });
           }
-        }
-        
-        // Sync position if playing
-        if (!audioRef.current.paused) {
-          const drift = Math.abs(audioRef.current.currentTime - state.position);
-          if (drift > 3) {
-            audioRef.current.currentTime = state.position;
+        } else {
+          // Same track - just sync position if drift is significant
+          if (!audioRef.current.paused) {
+            const drift = Math.abs(audioRef.current.currentTime - state.position);
+            if (drift > 3) {
+              console.log(`⏩ Syncing position: ${drift.toFixed(1)}s drift`);
+              audioRef.current.currentTime = state.position;
+            }
           }
         }
       }
@@ -94,7 +108,7 @@ function App() {
       setError("Unable to connect to radio");
       setIsLoading(false);
     }
-  }, [isTunedIn, playingFavorite, volume, isMuted]);
+  }, [isTunedIn, playingFavorite, volume, isMuted, currentTrackId]);
 
   // Fetch favorite
   const fetchFavorite = useCallback(async () => {
@@ -175,9 +189,22 @@ function App() {
       try {
         const response = await axios.get(`${API}/radio/stream`);
         if (response.data.audio_url) {
-          audioRef.current.src = response.data.audio_url;
-          audioRef.current.currentTime = response.data.position;
+          // Add cache buster for Drive URLs
+          let audioUrl = response.data.audio_url;
+          if (audioUrl.includes('/api/radio/proxy/')) {
+            audioUrl = `${audioUrl}?t=${Date.now()}`;
+          }
+          
+          console.log(`🎵 Tuning in: ${audioUrl}`);
+          audioRef.current.src = audioUrl;
+          audioRef.current.currentTime = response.data.position || 0;
           audioRef.current.volume = volume / 10;
+          
+          // Set current track ID
+          if (radioState?.current_track?.id) {
+            setCurrentTrackId(radioState.current_track.id);
+          }
+          
           await audioRef.current.play();
           setIsTunedIn(true);
           setIsMuted(false);
@@ -185,6 +212,7 @@ function App() {
         }
       } catch (e) {
         console.error("Error tuning in:", e);
+        setError("Failed to tune in. Try again.");
       }
     } else {
       // Toggle mute
@@ -200,7 +228,13 @@ function App() {
           try {
             const favResponse = await axios.get(`${API}/favorites/stream`);
             if (favResponse.data.audio_url) {
-              audioRef.current.src = favResponse.data.audio_url;
+              // Add cache buster
+              let audioUrl = favResponse.data.audio_url;
+              if (audioUrl.includes('/api/radio/proxy/')) {
+                audioUrl = `${audioUrl}?t=${Date.now()}`;
+              }
+              
+              audioRef.current.src = audioUrl;
               audioRef.current.currentTime = favoritePosition;
               audioRef.current.volume = volume / 10;
               await audioRef.current.play();
@@ -213,135 +247,145 @@ function App() {
           try {
             const streamResponse = await axios.get(`${API}/radio/stream`);
             if (streamResponse.data.audio_url) {
-              audioRef.current.src = streamResponse.data.audio_url;
-              audioRef.current.currentTime = streamResponse.data.position;
+              // Add cache buster
+              let audioUrl = streamResponse.data.audio_url;
+              if (audioUrl.includes('/api/radio/proxy/')) {
+                audioUrl = `${audioUrl}?t=${Date.now()}`;
+              }
+              
+              audioRef.current.src = audioUrl;
+              audioRef.current.currentTime = streamResponse.data.position || 0;
               audioRef.current.volume = volume / 10;
               await audioRef.current.play();
             }
           } catch (e) {
-            console.error("Error unmuting:", e);
+            console.error("Error reloading stream:", e);
           }
         }
         setIsMuted(false);
       } else {
-        // Muting - save position if playing favorite
-        if (playingFavorite && audioRef.current) {
-          setFavoritePosition(audioRef.current.currentTime);
+        // Muting
+        if (audioRef.current) {
+          audioRef.current.volume = 0;
         }
-        audioRef.current.volume = 0;
         setIsMuted(true);
       }
     }
   };
 
-  // Save favorite
-  const saveFavorite = async () => {
-    try {
-      const response = await axios.post(`${API}/favorites/save`);
-      setFavorite(response.data.track);
-      // Visual feedback via filled heart icon, no toast
-    } catch (e) {
-      console.error("Error saving favorite:", e);
-      showToast("Couldn't save favorite", "error");
+  const handleVolumeChange = (newVolume) => {
+    setVolume(newVolume);
+    if (audioRef.current && !isMuted) {
+      audioRef.current.volume = newVolume / 10;
     }
   };
 
-  // Play favorite
+  const saveFavorite = async () => {
+    try {
+      await axios.post(`${API}/favorites/save`);
+      await fetchFavorite();
+      showToast("Track saved as favorite! ❤️");
+    } catch (e) {
+      console.error("Error saving favorite:", e);
+      showToast("Failed to save favorite", "error");
+    }
+  };
+
   const playFav = async () => {
-    console.log("playFav called, favorite:", favorite);
-    
-    if (!favorite) {
-      showToast("No favorite saved", "error");
-      return;
-    }
-    
-    if (!audioRef.current) {
-      showToast("Audio player not ready", "error");
-      return;
-    }
+    if (!favorite) return;
     
     try {
-      showToast("Loading favorite...");
       const response = await axios.get(`${API}/favorites/stream`);
-      console.log("Favorite stream response:", response.data);
-      
-      if (response.data.audio_url) {
-        audioRef.current.src = response.data.audio_url;
+      if (response.data.audio_url && audioRef.current) {
+        // Add cache buster
+        let audioUrl = response.data.audio_url;
+        if (audioUrl.includes('/api/radio/proxy/')) {
+          audioUrl = `${audioUrl}?t=${Date.now()}`;
+        }
+        
+        console.log(`🎵 Playing favorite: ${audioUrl}`);
+        audioRef.current.src = audioUrl;
         audioRef.current.currentTime = 0;
-        audioRef.current.volume = volume / 10;
+        audioRef.current.volume = isMuted ? 0 : volume / 10;
+        
         await audioRef.current.play();
         setPlayingFavorite(true);
         setIsTunedIn(true);
-        setIsMuted(false);
-        showToast(`Playing: ${favorite.title}`);
-      } else {
-        showToast("Couldn't get audio URL", "error");
+        setFavoritePosition(0);
+        setCurrentTrackId(null); // Clear track ID when playing favorite
+        showToast("Now playing your favorite! 🎶");
       }
     } catch (e) {
       console.error("Error playing favorite:", e);
-      showToast(`Error: ${e.message}`, "error");
+      showToast("Failed to play favorite", "error");
     }
   };
 
-  // Back to live radio
   const backToLive = async () => {
     if (!audioRef.current) return;
     
     try {
       const response = await axios.get(`${API}/radio/stream`);
       if (response.data.audio_url) {
-        audioRef.current.src = response.data.audio_url;
-        audioRef.current.currentTime = response.data.position;
-        audioRef.current.volume = Math.max(volume / 100, 0.001);
+        // Add cache buster
+        let audioUrl = response.data.audio_url;
+        if (audioUrl.includes('/api/radio/proxy/')) {
+          audioUrl = `${audioUrl}?t=${Date.now()}`;
+        }
+        
+        console.log(`🎵 Back to live: ${audioUrl}`);
+        audioRef.current.src = audioUrl;
+        audioRef.current.currentTime = response.data.position || 0;
+        audioRef.current.volume = isMuted ? 0 : volume / 10;
+        
+        // Set current track ID
+        if (radioState?.current_track?.id) {
+          setCurrentTrackId(radioState.current_track.id);
+        }
+        
         await audioRef.current.play();
         setPlayingFavorite(false);
-        setIsMuted(false);
         showToast("Back to live radio! 📻");
       }
     } catch (e) {
       console.error("Error returning to live:", e);
+      showToast("Failed to return to live", "error");
     }
   };
 
-  // Share current track
   const shareTrack = async () => {
+    if (!radioState?.current_track && !favorite) return;
+    
     try {
       const response = await axios.get(`${API}/share/current`);
-      const data = response.data;
+      const shareData = response.data;
       
-      // Copy to clipboard
-      await navigator.clipboard.writeText(`${data.title}\n${data.url}`);
-      showToast("Share link copied! 📋");
+      if (navigator.share) {
+        await navigator.share({
+          title: shareData.title,
+          text: shareData.description,
+          url: shareData.url
+        });
+      } else {
+        await navigator.clipboard.writeText(shareData.url);
+        showToast("Link copied to clipboard! 🔗");
+      }
     } catch (e) {
       console.error("Error sharing:", e);
-      showToast("Couldn't copy share link", "error");
+      showToast("Failed to share", "error");
     }
   };
 
-  // Volume control
-  const handleVolumeChange = (newVolume) => {
-    setVolume(newVolume);
-    if (audioRef.current) {
-      if (newVolume === 0) {
-        // Position 0 = muted (volume 0 but audio keeps playing for track sync)
-        audioRef.current.volume = 0;
-      } else {
-        // Map 1-10 slider to 10%-100% audio volume
-        const audioVolume = newVolume / 10;
-        audioRef.current.volume = audioVolume;
-      }
-    }
-  };
-
-  // Update current time display
+  // Update current time
   useEffect(() => {
     const updateTime = () => {
-      if (isTunedIn) {
-        if (playingFavorite && audioRef.current) {
-          // For favorites, use actual audio time
+      if (playingFavorite && audioRef.current) {
+        setCurrentTime(audioRef.current.currentTime);
+        setFavoritePosition(audioRef.current.currentTime);
+      } else if (isTunedIn && radioState?.current_track) {
+        if (audioRef.current && !audioRef.current.paused) {
           setCurrentTime(audioRef.current.currentTime);
-        } else if (radioState?.current_track) {
-          // For radio, calculate from server time (works even when muted)
+        } else {
           const elapsed = Date.now() / 1000 - radioState.started_at;
           const position = elapsed % Math.max(radioState.current_track.duration, 1);
           setCurrentTime(position);
@@ -382,7 +426,18 @@ function App() {
       )}
       
       {/* Audio Element */}
-      <audio ref={audioRef} onEnded={() => !playingFavorite && fetchRadioState()} />
+      <audio 
+        ref={audioRef} 
+        onEnded={() => !playingFavorite && fetchRadioState()}
+        onError={(e) => {
+          console.error("Audio error:", e);
+          setError("Audio playback error. Refreshing...");
+          // Try to recover by fetching new stream
+          if (!playingFavorite) {
+            setTimeout(() => fetchRadioState(), 1000);
+          }
+        }}
+      />
       
       {/* Head Unit */}
       <div className="head-unit">
