@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -12,6 +12,7 @@ import time
 import uuid
 import json
 import re
+import httpx
 from datetime import datetime
 
 # Try to import Google Drive API (optional)
@@ -170,16 +171,12 @@ def parse_filename(filename: str) -> dict:
     return {"artist": "Unknown Artist", "title": name.strip()}
 
 def get_drive_direct_link(file_id: str) -> str:
-    """Get streamable URL for Google Drive file
+    """Get streamable URL for Google Drive file via backend proxy
     
-    For public files, this URL format works for direct streaming:
-    - No virus scan redirect
-    - Works in HTML5 audio elements
-    - Proper CORS headers
-    
-    IMPORTANT: Files must be set to "Anyone with the link can view"
+    Uses backend as proxy to avoid CORS issues with Google Drive
     """
-    return f"https://docs.google.com/uc?export=open&id={file_id}"
+    # Return URL to our proxy endpoint
+    return f"/api/radio/proxy/{file_id}"
 
 async def fetch_drive_playlist() -> List[Track]:
     """Fetch MP3 files from Google Drive folder"""
@@ -350,6 +347,33 @@ async def get_stream_url():
         "audio_url": radio_state.current_track.audio_url,
         "position": get_current_position()
     }
+
+@api_router.get("/radio/proxy/{file_id}")
+async def proxy_drive_audio(file_id: str):
+    """Proxy Google Drive audio to avoid CORS issues"""
+    drive_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(drive_url)
+            
+            if response.status_code != 200:
+                logger.error(f"Drive returned {response.status_code} for file {file_id}")
+                raise HTTPException(status_code=response.status_code, detail="Could not fetch audio from Drive")
+            
+            return StreamingResponse(
+                iter([response.content]),
+                media_type="audio/mpeg",
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(len(response.content)),
+                    "Cache-Control": "public, max-age=31536000"
+                }
+            )
+    except Exception as e:
+        logger.error(f"Error proxying Drive audio: {e}")
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
 
 @api_router.get("/radio/playlist")
 async def get_playlist():
