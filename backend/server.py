@@ -170,8 +170,16 @@ def parse_filename(filename: str) -> dict:
     return {"artist": "Unknown Artist", "title": name.strip()}
 
 def get_drive_direct_link(file_id: str) -> str:
-    """Get direct download URL for Google Drive file"""
-    return f"https://drive.google.com/uc?export=download&id={file_id}"
+    """Get streamable URL for Google Drive file
+    
+    For public files, this URL format works for direct streaming:
+    - No virus scan redirect
+    - Works in HTML5 audio elements
+    - Proper CORS headers
+    
+    IMPORTANT: Files must be set to "Anyone with the link can view"
+    """
+    return f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0&confirm=t"
 
 async def fetch_drive_playlist() -> List[Track]:
     """Fetch MP3 files from Google Drive folder"""
