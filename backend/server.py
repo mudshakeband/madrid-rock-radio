@@ -366,75 +366,111 @@ async def proxy_options(file_id: str):
 @api_router.get("/radio/proxy/{file_id}")
 async def proxy_drive_audio(file_id: str, request: Request):
     """Proxy Google Drive audio with proper streaming support (range requests)"""
-    drive_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    
+    if not DRIVE_API_ENABLED:
+        raise HTTPException(status_code=503, detail="Drive API not configured")
     
     try:
+        # Get file metadata
+        file_metadata = drive_service.files().get(
+            fileId=file_id,
+            fields="name,mimeType,size"
+        ).execute()
+        
+        file_size = int(file_metadata.get('size', 0))
+        file_name = file_metadata.get('name', 'unknown.mp3')
+        logger.info(f"📀 Streaming: {file_name} ({file_size} bytes)")
+        
         # Parse range header from browser
         range_header = request.headers.get("range")
         
-        headers_to_send = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
         if range_header:
-            headers_to_send["Range"] = range_header
-            logger.info(f"🎵 Range request for {file_id}: {range_header}")
-        else:
-            logger.info(f"🎵 Full file request for {file_id}")
-        
-        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
-            # Stream the response
-            async with client.stream("GET", drive_url, headers=headers_to_send) as response:
-                logger.info(f"Drive response: {response.status_code}")
+            # Handle range request
+            logger.info(f"🎵 Range request: {range_header}")
+            range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+            
+            if range_match:
+                start = int(range_match.group(1))
+                end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
                 
-                if response.status_code not in [200, 206]:
-                    logger.error(f"Drive returned {response.status_code} for file {file_id}")
-                    raise HTTPException(
-                        status_code=response.status_code, 
-                        detail="Could not fetch audio from Drive"
-                    )
+                # Ensure end doesn't exceed file size
+                end = min(end, file_size - 1)
+                chunk_size = end - start + 1
                 
-                # Forward important headers - NO CACHING to avoid 304
-                response_headers = {
-                    "Accept-Ranges": "bytes",
-                    "Content-Type": "audio/mpeg",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "GET, OPTIONS",
-                    "Access-Control-Allow-Headers": "Range",
-                    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
-                }
+                logger.info(f"📦 Serving bytes {start}-{end}/{file_size}")
                 
-                # Forward content-length if available
-                if "content-length" in response.headers:
-                    response_headers["Content-Length"] = response.headers["content-length"]
-                    logger.info(f"Content-Length: {response.headers['content-length']}")
+                # Get media request from Drive API
+                media_request = drive_service.files().get_media(fileId=file_id)
                 
-                # Forward content-range for partial responses
-                if "content-range" in response.headers:
-                    response_headers["Content-Range"] = response.headers["content-range"]
-                    logger.info(f"Content-Range: {response.headers['content-range']}")
+                # Set range in the request headers
+                media_request.headers['Range'] = f'bytes={start}-{end}'
                 
-                # Stream the content in chunks
-                async def stream_generator():
-                    try:
-                        async for chunk in response.aiter_bytes(chunk_size=65536):
-                            yield chunk
-                    except Exception as e:
-                        logger.error(f"Error streaming chunk: {e}")
-                        raise
+                # Stream the chunk
+                import io
+                fh = io.BytesIO()
                 
-                # Return 206 for range requests, 200 otherwise
-                status_code = 206 if response.status_code == 206 else 200
-                logger.info(f"Returning status {status_code}")
+                from googleapiclient.http import MediaIoBaseDownload
+                downloader = MediaIoBaseDownload(fh, media_request, chunksize=chunk_size)
                 
-                return StreamingResponse(
-                    stream_generator(),
-                    status_code=status_code,
-                    headers=response_headers,
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                
+                # Get the data
+                chunk_data = fh.getvalue()
+                
+                return Response(
+                    content=chunk_data,
+                    status_code=206,
+                    headers={
+                        "Content-Type": "audio/mpeg",
+                        "Content-Range": f"bytes {start}-{end}/{file_size}",
+                        "Content-Length": str(len(chunk_data)),
+                        "Accept-Ranges": "bytes",
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+                    },
                     media_type="audio/mpeg"
                 )
+        else:
+            # Full file request (rare - usually browser requests ranges)
+            logger.info(f"🎵 Full file request")
+            
+            # Stream entire file
+            media_request = drive_service.files().get_media(fileId=file_id)
+            
+            import io
+            fh = io.BytesIO()
+            
+            from googleapiclient.http import MediaIoBaseDownload
+            downloader = MediaIoBaseDownload(fh, media_request)
+            
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+            
+            file_data = fh.getvalue()
+            
+            return Response(
+                content=file_data,
+                status_code=200,
+                headers={
+                    "Content-Type": "audio/mpeg",
+                    "Content-Length": str(len(file_data)),
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Content-Length, Accept-Ranges",
+                },
+                media_type="audio/mpeg"
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Error proxying Drive audio for {file_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
                 
     except httpx.HTTPError as e:
         logger.error(f"HTTP error proxying Drive audio: {e}")
