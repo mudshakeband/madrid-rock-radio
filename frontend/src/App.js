@@ -74,7 +74,7 @@ function App() {
           if (streamResponse.data.audio_url) {
             // CRITICAL FIX: Add cache buster for Drive URLs
             let audioUrl = streamResponse.data.audio_url;
-            if (audioUrl.includes('/api/radio/proxy/')) {
+            if (audioUrl.includes('/api/radio/')) {
               audioUrl = `${audioUrl}?t=${Date.now()}`;
             }
             
@@ -191,7 +191,7 @@ function App() {
         if (response.data.audio_url) {
           // Add cache buster for Drive URLs
           let audioUrl = response.data.audio_url;
-          if (audioUrl.includes('/api/radio/proxy/')) {
+          if (audioUrl.includes('/api/radio/')) {
             audioUrl = `${audioUrl}?t=${Date.now()}`;
           }
           
@@ -230,7 +230,7 @@ function App() {
             if (favResponse.data.audio_url) {
               // Add cache buster
               let audioUrl = favResponse.data.audio_url;
-              if (audioUrl.includes('/api/radio/proxy/')) {
+              if (audioUrl.includes('/api/radio/')) {
                 audioUrl = `${audioUrl}?t=${Date.now()}`;
               }
               
@@ -249,7 +249,7 @@ function App() {
             if (streamResponse.data.audio_url) {
               // Add cache buster
               let audioUrl = streamResponse.data.audio_url;
-              if (audioUrl.includes('/api/radio/proxy/')) {
+              if (audioUrl.includes('/api/radio/')) {
                 audioUrl = `${audioUrl}?t=${Date.now()}`;
               }
               
@@ -299,7 +299,7 @@ function App() {
       if (response.data.audio_url && audioRef.current) {
         // Add cache buster
         let audioUrl = response.data.audio_url;
-        if (audioUrl.includes('/api/radio/proxy/')) {
+        if (audioUrl.includes('/api/radio/')) {
           audioUrl = `${audioUrl}?t=${Date.now()}`;
         }
         
@@ -329,7 +329,7 @@ function App() {
       if (response.data.audio_url) {
         // Add cache buster
         let audioUrl = response.data.audio_url;
-        if (audioUrl.includes('/api/radio/proxy/')) {
+        if (audioUrl.includes('/api/radio/')) {
           audioUrl = `${audioUrl}?t=${Date.now()}`;
         }
         
