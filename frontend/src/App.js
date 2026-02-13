@@ -3,7 +3,7 @@ import "./App.css";
 import axios from "axios";
 import { Play, VolumeX, Volume2, Share2, Heart, Radio as RadioIcon, Power, ExternalLink } from "lucide-react";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || `http://${window.location.hostname}:8000`;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'https://madrid-rock-api.onrender.com';
 const API = `${BACKEND_URL}/api`;
 const SYNC_INTERVAL = 2000;
 
