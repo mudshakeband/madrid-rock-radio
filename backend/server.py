@@ -443,10 +443,23 @@ async def get_stream_url():
 async def stream_telegram_audio(file_id: str, request: Request):
     """Stream audio from Telegram with range request support"""
     try:
-        logger.info(f"🎵 Streaming file: {file_id[:20]}...")
+        logger.info(f"🎵 Streaming request for file_id: {file_id}")
+        
+        # Validate file_id format (basic check)
+        if not file_id or len(file_id) < 20:
+            logger.error(f"❌ Invalid file_id: {file_id}")
+            raise HTTPException(status_code=400, detail="Invalid file_id")
         
         # Get download URL from Telegram
-        download_url = await get_telegram_file_url(file_id)
+        try:
+            download_url = await get_telegram_file_url(file_id)
+            logger.info(f"✅ Got Telegram URL: {download_url[:50]}...")
+        except Exception as e:
+            logger.error(f"❌ Failed to get Telegram file URL: {e}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to get file from Telegram: {str(e)}"
+            )
         
         # Parse range header from browser
         range_header = request.headers.get("range")
@@ -457,58 +470,86 @@ async def stream_telegram_audio(file_id: str, request: Request):
             logger.info(f"📦 Range request: {range_header}")
         
         # Stream the file from Telegram
-        async with httpx.AsyncClient() as client:
-            async with client.stream("GET", download_url, headers=headers_to_send, timeout=60.0) as response:
-                
-                if response.status_code not in [200, 206]:
-                    logger.error(f"❌ Telegram returned {response.status_code}")
-                    raise HTTPException(status_code=500, detail="Failed to fetch audio from Telegram")
-                
-                # Prepare response headers
-                response_headers = {
-                    "Content-Type": "audio/mpeg",
-                    "Accept-Ranges": "bytes",
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
-                    "Access-Control-Allow-Headers": "Range",
-                }
-                
-                # Forward content-length if available
-                if "content-length" in response.headers:
-                    response_headers["Content-Length"] = response.headers["content-length"]
-                
-                # Forward content-range for partial responses
-                if "content-range" in response.headers:
-                    response_headers["Content-Range"] = response.headers["content-range"]
-                    logger.info(f"📦 Serving: {response.headers['content-range']}")
-                
-                # Stream the content in chunks
-                from fastapi.responses import StreamingResponse
-                
-                async def stream_generator():
-                    try:
-                        async for chunk in response.aiter_bytes(chunk_size=65536):
-                            yield chunk
-                    except Exception as e:
-                        logger.error(f"Error streaming chunk: {e}")
-                        raise
-                
-                # Return 206 for range requests, 200 otherwise
-                status_code = 206 if response.status_code == 206 else 200
-                
-                return StreamingResponse(
-                    stream_generator(),
-                    status_code=status_code,
-                    headers=response_headers,
-                    media_type="audio/mpeg"
-                )
+        try:
+            async with httpx.AsyncClient() as client:
+                async with client.stream("GET", download_url, headers=headers_to_send, timeout=60.0) as response:
+                    
+                    if response.status_code not in [200, 206]:
+                        logger.error(f"❌ Telegram returned {response.status_code}")
+                        # Read error response
+                        error_body = await response.aread()
+                        logger.error(f"❌ Error body: {error_body[:200]}")
+                        raise HTTPException(
+                            status_code=response.status_code,
+                            detail=f"Telegram API error: {response.status_code}"
+                        )
+                    
+                    # Prepare response headers
+                    response_headers = {
+                        "Content-Type": "audio/mpeg",
+                        "Accept-Ranges": "bytes",
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+                        "Access-Control-Allow-Headers": "Range",
+                    }
+                    
+                    # Forward content-length if available
+                    if "content-length" in response.headers:
+                        response_headers["Content-Length"] = response.headers["content-length"]
+                        logger.info(f"📦 Content-Length: {response.headers['content-length']}")
+                    
+                    # Forward content-range for partial responses
+                    if "content-range" in response.headers:
+                        response_headers["Content-Range"] = response.headers["content-range"]
+                        logger.info(f"📦 Content-Range: {response.headers['content-range']}")
+                    
+                    # Stream the content in chunks
+                    from fastapi.responses import StreamingResponse
+                    
+                    async def stream_generator():
+                        try:
+                            chunk_count = 0
+                            async for chunk in response.aiter_bytes(chunk_size=65536):
+                                chunk_count += 1
+                                if chunk_count == 1:
+                                    logger.info(f"📡 Streaming started, first chunk: {len(chunk)} bytes")
+                                yield chunk
+                            logger.info(f"✅ Streaming complete: {chunk_count} chunks")
+                        except Exception as e:
+                            logger.error(f"❌ Error streaming chunk: {e}")
+                            raise
+                    
+                    # Return 206 for range requests, 200 otherwise
+                    status_code = 206 if response.status_code == 206 else 200
+                    logger.info(f"📤 Returning {status_code} response")
+                    
+                    return StreamingResponse(
+                        stream_generator(),
+                        status_code=status_code,
+                        headers=response_headers,
+                        media_type="audio/mpeg"
+                    )
+        except httpx.RequestError as e:
+            logger.error(f"❌ Network error streaming from Telegram: {e}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Network error contacting Telegram: {str(e)}"
+            )
             
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"❌ Error streaming audio: {e}")
-        raise HTTPException(status_code=500, detail=f"Stream error: {str(e)}")
+        logger.error(f"❌ Unexpected error in stream_telegram_audio: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 @api_router.get("/radio/playlist")
 async def get_playlist():
@@ -581,6 +622,37 @@ async def get_all_songs():
         "total": len(SONGS_DB),
         "songs": [t.model_dump() for t in SONGS_DB.values()]
     }
+
+@api_router.get("/admin/test-stream/{file_id}")
+async def test_stream(file_id: str):
+    """Test if a file_id can be streamed (for debugging)"""
+    try:
+        logger.info(f"🧪 Testing file_id: {file_id}")
+        
+        # Try to get the download URL
+        download_url = await get_telegram_file_url(file_id)
+        logger.info(f"✅ Got URL: {download_url}")
+        
+        # Try to fetch first few bytes
+        async with httpx.AsyncClient() as client:
+            response = await client.get(download_url, headers={"Range": "bytes=0-1023"}, timeout=10.0)
+            
+            return {
+                "file_id": file_id,
+                "download_url": download_url,
+                "telegram_status": response.status_code,
+                "content_type": response.headers.get("content-type"),
+                "content_length": response.headers.get("content-length"),
+                "first_bytes": len(await response.aread()),
+                "success": response.status_code in [200, 206]
+            }
+    except Exception as e:
+        logger.error(f"❌ Test failed: {e}")
+        return {
+            "file_id": file_id,
+            "error": str(e),
+            "success": False
+        }
 
 @api_router.post("/admin/rescan")
 async def manual_rescan():
