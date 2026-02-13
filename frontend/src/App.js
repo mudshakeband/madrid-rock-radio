@@ -50,10 +50,12 @@ function App() {
   const [favorite, setFavorite] = useState(null);
   const [playingFavorite, setPlayingFavorite] = useState(false);
   const [favoritePosition, setFavoritePosition] = useState(0);
-  const [currentTrackId, setCurrentTrackId] = useState(null); // Track which song is loaded
+  const [currentTrackId, setCurrentTrackId] = useState(null);
   
   const audioRef = useRef(null);
   const syncIntervalRef = useRef(null);
+  const isLoadingTrackRef = useRef(false); // Prevent concurrent loads
+  const errorCountRef = useRef(0); // Track consecutive errors
 
   // Fetch radio state
   const fetchRadioState = useCallback(async () => {
@@ -62,37 +64,19 @@ function App() {
       const state = response.data;
       setRadioState(state);
       setError(null);
+      errorCountRef.current = 0; // Reset error count on success
       
       // Update audio if needed (only when listening to radio, not favorite)
-      if (!playingFavorite && state.current_track && audioRef.current && isTunedIn) {
-        // Check if track changed by comparing track IDs, not URLs
+      if (!playingFavorite && state.current_track && audioRef.current && isTunedIn && !isLoadingTrackRef.current) {
+        // Check if track changed by comparing track IDs
         const newTrackId = state.current_track.id;
         
         if (newTrackId !== currentTrackId) {
           console.log(`🔄 Track changed from ${currentTrackId} to ${newTrackId}`);
-          const streamResponse = await axios.get(`${API}/radio/stream`);
-          if (streamResponse.data.audio_url) {
-            // CRITICAL FIX: Add cache buster for Drive URLs
-            let audioUrl = streamResponse.data.audio_url;
-            if (audioUrl.includes('/api/radio/')) {
-              audioUrl = `${audioUrl}?t=${Date.now()}`;
-            }
-            
-            console.log(`🎵 Loading new track: ${audioUrl}`);
-            audioRef.current.src = audioUrl;
-            audioRef.current.currentTime = state.position || 0;
-            audioRef.current.volume = isMuted ? 0 : volume / 10;
-            setCurrentTrackId(newTrackId);
-            
-            // Play
-            audioRef.current.play().catch(err => {
-              console.error("Error playing audio:", err);
-              setError("Playback failed. Try refreshing.");
-            });
-          }
+          await loadTrack(newTrackId, state.position);
         } else {
           // Same track - just sync position if drift is significant
-          if (!audioRef.current.paused) {
+          if (!audioRef.current.paused && audioRef.current.readyState >= 2) {
             const drift = Math.abs(audioRef.current.currentTime - state.position);
             if (drift > 3) {
               console.log(`⏩ Syncing position: ${drift.toFixed(1)}s drift`);
@@ -105,10 +89,77 @@ function App() {
       setIsLoading(false);
     } catch (e) {
       console.error("Error fetching radio state:", e);
-      setError("Unable to connect to radio");
+      errorCountRef.current++;
+      
+      // Only show error if we have multiple failures
+      if (errorCountRef.current > 3) {
+        setError("Unable to connect to radio");
+      }
       setIsLoading(false);
     }
-  }, [isTunedIn, playingFavorite, volume, isMuted, currentTrackId]);
+  }, [isTunedIn, playingFavorite, currentTrackId]);
+
+  // Load track helper function
+  const loadTrack = async (trackId, position = 0) => {
+    if (isLoadingTrackRef.current) {
+      console.log('⚠️ Track load already in progress, skipping');
+      return;
+    }
+
+    isLoadingTrackRef.current = true;
+
+    try {
+      const streamResponse = await axios.get(`${API}/radio/stream`);
+      if (streamResponse.data.audio_url && audioRef.current) {
+        // Add cache buster with timestamp
+        const audioUrl = `${streamResponse.data.audio_url}?t=${Date.now()}`;
+        
+        console.log(`🎵 Loading track: ${audioUrl}`);
+        
+        // Important: Set src and immediately set currentTime to avoid playback from start
+        audioRef.current.src = audioUrl;
+        audioRef.current.currentTime = position || 0;
+        audioRef.current.volume = isMuted ? 0 : volume / 10;
+        setCurrentTrackId(trackId);
+        
+        // Wait for audio to be ready before playing
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Load timeout')), 10000);
+          
+          const onCanPlay = () => {
+            clearTimeout(timeout);
+            audioRef.current.removeEventListener('canplay', onCanPlay);
+            audioRef.current.removeEventListener('error', onError);
+            resolve();
+          };
+          
+          const onError = (e) => {
+            clearTimeout(timeout);
+            audioRef.current.removeEventListener('canplay', onCanPlay);
+            audioRef.current.removeEventListener('error', onError);
+            reject(e);
+          };
+          
+          audioRef.current.addEventListener('canplay', onCanPlay, { once: true });
+          audioRef.current.addEventListener('error', onError, { once: true });
+        });
+        
+        // Now play
+        await audioRef.current.play();
+        console.log('✅ Track loaded and playing');
+      }
+    } catch (err) {
+      console.error("Error loading track:", err);
+      errorCountRef.current++;
+      
+      // Only show error after multiple failures
+      if (errorCountRef.current > 2) {
+        setError("Playback failed. Try refreshing.");
+      }
+    } finally {
+      isLoadingTrackRef.current = false;
+    }
+  };
 
   // Fetch favorite
   const fetchFavorite = useCallback(async () => {
@@ -178,7 +229,7 @@ function App() {
     }, 60000); // 1 minute for testing (change to 3600000 for 1 hour)
     
     return () => clearInterval(interval);
-  }, []); // No dependencies - runs once on mount
+  }, []);
 
   // Toggle tune in/mute
   const toggleTuneIn = async () => {
@@ -189,11 +240,8 @@ function App() {
       try {
         const response = await axios.get(`${API}/radio/stream`);
         if (response.data.audio_url) {
-          // Add cache buster for Drive URLs
-          let audioUrl = response.data.audio_url;
-          if (audioUrl.includes('/api/radio/')) {
-            audioUrl = `${audioUrl}?t=${Date.now()}`;
-          }
+          // Add cache buster
+          const audioUrl = `${response.data.audio_url}?t=${Date.now()}`;
           
           console.log(`🎵 Tuning in: ${audioUrl}`);
           audioRef.current.src = audioUrl;
@@ -205,10 +253,33 @@ function App() {
             setCurrentTrackId(radioState.current_track.id);
           }
           
+          // Wait for canplay before attempting to play
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Tune in timeout')), 10000);
+            
+            const onCanPlay = () => {
+              clearTimeout(timeout);
+              audioRef.current.removeEventListener('canplay', onCanPlay);
+              audioRef.current.removeEventListener('error', onError);
+              resolve();
+            };
+            
+            const onError = (e) => {
+              clearTimeout(timeout);
+              audioRef.current.removeEventListener('canplay', onCanPlay);
+              audioRef.current.removeEventListener('error', onError);
+              reject(e);
+            };
+            
+            audioRef.current.addEventListener('canplay', onCanPlay, { once: true });
+            audioRef.current.addEventListener('error', onError, { once: true });
+          });
+          
           await audioRef.current.play();
           setIsTunedIn(true);
           setIsMuted(false);
           setPlayingFavorite(false);
+          errorCountRef.current = 0; // Reset error count
         }
       } catch (e) {
         console.error("Error tuning in:", e);
@@ -217,49 +288,11 @@ function App() {
     } else {
       // Toggle mute
       if (isMuted) {
-        // Unmuting - just restore volume if audio is already playing
+        // Unmuting
         if (audioRef.current && audioRef.current.src) {
           audioRef.current.volume = volume / 10;
           if (audioRef.current.paused) {
-            audioRef.current.play().catch(console.error);
-          }
-        } else if (playingFavorite) {
-          // No audio loaded, need to fetch favorite
-          try {
-            const favResponse = await axios.get(`${API}/favorites/stream`);
-            if (favResponse.data.audio_url) {
-              // Add cache buster
-              let audioUrl = favResponse.data.audio_url;
-              if (audioUrl.includes('/api/radio/')) {
-                audioUrl = `${audioUrl}?t=${Date.now()}`;
-              }
-              
-              audioRef.current.src = audioUrl;
-              audioRef.current.currentTime = favoritePosition;
-              audioRef.current.volume = volume / 10;
-              await audioRef.current.play();
-            }
-          } catch (e) {
-            console.error("Error resuming favorite:", e);
-          }
-        } else {
-          // No audio loaded, need to fetch radio stream
-          try {
-            const streamResponse = await axios.get(`${API}/radio/stream`);
-            if (streamResponse.data.audio_url) {
-              // Add cache buster
-              let audioUrl = streamResponse.data.audio_url;
-              if (audioUrl.includes('/api/radio/')) {
-                audioUrl = `${audioUrl}?t=${Date.now()}`;
-              }
-              
-              audioRef.current.src = audioUrl;
-              audioRef.current.currentTime = streamResponse.data.position || 0;
-              audioRef.current.volume = volume / 10;
-              await audioRef.current.play();
-            }
-          } catch (e) {
-            console.error("Error reloading stream:", e);
+            await audioRef.current.play().catch(console.error);
           }
         }
         setIsMuted(false);
@@ -273,6 +306,23 @@ function App() {
     }
   };
 
+  // Update time
+  useEffect(() => {
+    if (!audioRef.current) return;
+    
+    const updateTime = () => {
+      if (isTunedIn && !playingFavorite) {
+        setCurrentTime(audioRef.current?.currentTime || 0);
+      } else if (playingFavorite) {
+        setCurrentTime(audioRef.current?.currentTime || 0);
+      }
+    };
+    
+    const interval = setInterval(updateTime, 100);
+    return () => clearInterval(interval);
+  }, [isTunedIn, playingFavorite]);
+
+  // Volume change
   const handleVolumeChange = (newVolume) => {
     setVolume(newVolume);
     if (audioRef.current && !isMuted) {
@@ -280,82 +330,61 @@ function App() {
     }
   };
 
+  // Save favorite
   const saveFavorite = async () => {
     try {
       await axios.post(`${API}/favorites/save`);
       await fetchFavorite();
-      showToast("Track saved as favorite! ❤️");
+      showToast("Favorite saved!");
     } catch (e) {
       console.error("Error saving favorite:", e);
-      showToast("Failed to save favorite", "error");
+      showToast("Error saving favorite", "error");
     }
   };
 
+  // Play favorite
   const playFav = async () => {
-    if (!favorite) return;
+    if (!favorite || !audioRef.current) return;
     
     try {
       const response = await axios.get(`${API}/favorites/stream`);
-      if (response.data.audio_url && audioRef.current) {
+      if (response.data.audio_url) {
         // Add cache buster
-        let audioUrl = response.data.audio_url;
-        if (audioUrl.includes('/api/radio/')) {
-          audioUrl = `${audioUrl}?t=${Date.now()}`;
-        }
+        const audioUrl = `${response.data.audio_url}?t=${Date.now()}`;
         
-        console.log(`🎵 Playing favorite: ${audioUrl}`);
+        console.log(`❤️  Playing favorite: ${audioUrl}`);
         audioRef.current.src = audioUrl;
-        audioRef.current.currentTime = 0;
-        audioRef.current.volume = isMuted ? 0 : volume / 10;
+        audioRef.current.currentTime = favoritePosition;
+        audioRef.current.volume = volume / 10;
         
         await audioRef.current.play();
         setPlayingFavorite(true);
         setIsTunedIn(true);
-        setFavoritePosition(0);
-        setCurrentTrackId(null); // Clear track ID when playing favorite
-        showToast("Now playing your favorite! 🎶");
+        setIsMuted(false);
       }
     } catch (e) {
       console.error("Error playing favorite:", e);
-      showToast("Failed to play favorite", "error");
+      showToast("Error playing favorite", "error");
     }
   };
 
+  // Back to live
   const backToLive = async () => {
-    if (!audioRef.current) return;
+    setPlayingFavorite(false);
+    setIsTunedIn(false);
     
-    try {
-      const response = await axios.get(`${API}/radio/stream`);
-      if (response.data.audio_url) {
-        // Add cache buster
-        let audioUrl = response.data.audio_url;
-        if (audioUrl.includes('/api/radio/')) {
-          audioUrl = `${audioUrl}?t=${Date.now()}`;
-        }
-        
-        console.log(`🎵 Back to live: ${audioUrl}`);
-        audioRef.current.src = audioUrl;
-        audioRef.current.currentTime = response.data.position || 0;
-        audioRef.current.volume = isMuted ? 0 : volume / 10;
-        
-        // Set current track ID
-        if (radioState?.current_track?.id) {
-          setCurrentTrackId(radioState.current_track.id);
-        }
-        
-        await audioRef.current.play();
-        setPlayingFavorite(false);
-        showToast("Back to live radio! 📻");
+    // Refresh state and tune in
+    await fetchRadioState();
+    
+    setTimeout(async () => {
+      if (radioState?.current_track) {
+        await toggleTuneIn();
       }
-    } catch (e) {
-      console.error("Error returning to live:", e);
-      showToast("Failed to return to live", "error");
-    }
+    }, 100);
   };
 
+  // Share track
   const shareTrack = async () => {
-    if (!radioState?.current_track && !favorite) return;
-    
     try {
       const response = await axios.get(`${API}/share/current`);
       const shareData = response.data;
@@ -368,36 +397,15 @@ function App() {
         });
       } else {
         await navigator.clipboard.writeText(shareData.url);
-        showToast("Link copied to clipboard! 🔗");
+        showToast("Link copied to clipboard!");
       }
     } catch (e) {
       console.error("Error sharing:", e);
-      showToast("Failed to share", "error");
+      showToast("Error sharing", "error");
     }
   };
 
-  // Update current time
-  useEffect(() => {
-    const updateTime = () => {
-      if (playingFavorite && audioRef.current) {
-        setCurrentTime(audioRef.current.currentTime);
-        setFavoritePosition(audioRef.current.currentTime);
-      } else if (isTunedIn && radioState?.current_track) {
-        if (audioRef.current && !audioRef.current.paused) {
-          setCurrentTime(audioRef.current.currentTime);
-        } else {
-          const elapsed = Date.now() / 1000 - radioState.started_at;
-          const position = elapsed % Math.max(radioState.current_track.duration, 1);
-          setCurrentTime(position);
-        }
-      }
-    };
-    
-    const interval = setInterval(updateTime, 500);
-    return () => clearInterval(interval);
-  }, [isTunedIn, playingFavorite, radioState]);
-
-  // Toast notification
+  // Toast
   const [toast, setToast] = useState(null);
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -427,15 +435,36 @@ function App() {
       
       {/* Audio Element */}
       <audio 
-        ref={audioRef} 
+        ref={audioRef}
+        preload="auto"
         onEnded={() => !playingFavorite && fetchRadioState()}
         onError={(e) => {
-          console.error("Audio error:", e);
-          setError("Audio playback error. Refreshing...");
-          // Try to recover by fetching new stream
-          if (!playingFavorite) {
-            setTimeout(() => fetchRadioState(), 1000);
+          // Log the error but DON'T immediately try to reload
+          console.error("Audio error:", e.target.error);
+          
+          // Only increment error count and show message
+          errorCountRef.current++;
+          
+          // Only try to recover after multiple errors AND if we're actually tuned in
+          if (errorCountRef.current > 3 && isTunedIn && !playingFavorite) {
+            setError("Connection issue. Reconnecting...");
+            // Wait 2 seconds before attempting recovery
+            setTimeout(() => {
+              if (isTunedIn) {
+                fetchRadioState();
+              }
+            }, 2000);
           }
+        }}
+        onLoadStart={() => {
+          console.log('🔄 Audio load started');
+        }}
+        onCanPlay={() => {
+          console.log('✅ Audio can play');
+          setError(null);
+        }}
+        onAbort={() => {
+          console.log('⚠️ Audio load aborted');
         }}
       />
       
