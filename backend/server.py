@@ -22,8 +22,9 @@ api_router = APIRouter(prefix="/api")
 
 # ==================== TELEGRAM CONFIG ====================
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')  # Your personal chat ID
 
-# Store songs in memory (persists during runtime)
+# Store songs in memory (will be rebuilt from Telegram on startup)
 SONGS_DB = {}  # file_id -> Track data
 
 # Track last update_id to avoid processing duplicates
@@ -56,6 +57,80 @@ radio_state = RadioState()
 user_favorites = {}
 
 # ==================== TELEGRAM HELPERS ====================
+async def scan_telegram_history():
+    """Scan Telegram chat history to rebuild song database from all previously sent MP3s"""
+    global SONGS_DB
+    
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    
+    logger.info("🔍 Scanning Telegram chat history for MP3 files...")
+    
+    try:
+        # Get all updates (Telegram keeps up to 24 hours of history)
+        # But we'll use a better approach: get updates with a large limit
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+        params = {
+            "offset": 0,  # Start from beginning
+            "limit": 100  # Max allowed per request
+        }
+        
+        all_songs_found = {}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=30.0)
+            data = response.json()
+            
+            if not data.get('ok'):
+                logger.error(f"❌ Failed to get Telegram history: {data}")
+                return
+            
+            updates = data.get('result', [])
+            logger.info(f"📥 Processing {len(updates)} messages from Telegram history...")
+            
+            for update in updates:
+                message = update.get('message', {})
+                
+                # Check for audio file
+                audio = message.get('audio')
+                document = message.get('document')
+                
+                file_info = None
+                if audio:
+                    file_info = audio
+                elif document and document.get('mime_type') == 'audio/mpeg':
+                    file_info = document
+                
+                if file_info:
+                    file_id = file_info['file_id']
+                    filename = file_info.get('file_name', 'Unknown Track.mp3')
+                    parsed = parse_filename(filename)
+                    duration = file_info.get('duration', 180)
+                    
+                    track = Track(
+                        file_id=file_id,
+                        title=parsed["title"],
+                        artist=parsed["artist"],
+                        duration=duration,
+                        audio_url=f"/api/radio/stream/{file_id}",
+                        thumbnail=None
+                    )
+                    
+                    all_songs_found[file_id] = track
+                    logger.info(f"  ✓ Found: {track.artist} - {track.title}")
+        
+        # Update the global database
+        SONGS_DB = all_songs_found
+        logger.info(f"✅ Loaded {len(SONGS_DB)} songs from Telegram history")
+        
+        if SONGS_DB:
+            await reload_playlist()
+        
+    except Exception as e:
+        logger.error(f"❌ Error scanning Telegram history: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
 def parse_filename(filename: str) -> dict:
     """Parse audio filename to extract artist and title"""
     # Remove extension
@@ -264,11 +339,13 @@ async def initialize_radio():
         return
     
     logger.info("✅ Telegram bot configured")
+    
+    # Scan Telegram history to rebuild song database
+    await scan_telegram_history()
+    
     logger.info(f"📻 Songs in database: {len(SONGS_DB)}")
     
-    if SONGS_DB:
-        await reload_playlist()
-    else:
+    if not SONGS_DB:
         logger.info("💡 No songs yet! Send MP3 files to your bot on Telegram to get started.")
         logger.info("   1. Open Telegram and search for your bot")
         logger.info("   2. Send /start")
@@ -500,6 +577,15 @@ async def get_all_songs():
     return {
         "total": len(SONGS_DB),
         "songs": [t.model_dump() for t in SONGS_DB.values()]
+    }
+
+@api_router.post("/admin/rescan")
+async def manual_rescan():
+    """Manually rescan Telegram history for songs"""
+    await scan_telegram_history()
+    return {
+        "message": "Telegram history rescanned",
+        "total": len(SONGS_DB)
     }
 
 # ==================== SETUP ====================
