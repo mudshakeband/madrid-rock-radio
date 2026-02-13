@@ -469,8 +469,11 @@ async def stream_telegram_audio(file_id: str, request: Request):
                     "Content-Type": "audio/mpeg",
                     "Accept-Ranges": "bytes",
                     "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
                     "Access-Control-Allow-Origin": "*",
                     "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+                    "Access-Control-Allow-Headers": "Range",
                 }
                 
                 # Forward content-length if available
