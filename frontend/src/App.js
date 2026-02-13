@@ -3,7 +3,9 @@ import "./App.css";
 import axios from "axios";
 import { Play, VolumeX, Volume2, Share2, Heart, Radio as RadioIcon, Power, ExternalLink } from "lucide-react";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'https://madrid-rock-api.onrender.com';
+// FIXED: Hardcoded backend URL to ensure correct API endpoint is always used
+// Previous issue: React env vars are baked at build time, causing fallback to use frontend URL
+const BACKEND_URL = 'https://madrid-rock-api.onrender.com';
 const API = `${BACKEND_URL}/api`;
 const SYNC_INTERVAL = 2000;
 
