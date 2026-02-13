@@ -112,7 +112,7 @@ async def scan_telegram_history():
                         title=parsed["title"],
                         artist=parsed["artist"],
                         duration=duration,
-                        audio_url=f"/api/radio/stream/{file_id}",
+                        audio_url=f"https://madrid-rock-api.onrender.com/api/radio/stream/{file_id}",
                         thumbnail=None
                     )
                     
@@ -220,7 +220,7 @@ async def process_telegram_updates():
                         title=parsed["title"],
                         artist=parsed["artist"],
                         duration=duration,
-                        audio_url=f"/api/radio/stream/{file_id}",
+                        audio_url=f"https://madrid-rock-api.onrender.com/api/radio/stream/{file_id}",
                         thumbnail=None
                     )
                     
