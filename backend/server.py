@@ -20,7 +20,10 @@ app = FastAPI(title="Madrid Rock Radio - Telegram Edition")
 api_router = APIRouter(prefix="/api")
 
 # ==================== TELEGRAM CONFIG ====================
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8060531889:AAFbwdVlr23jD3UE06YffmMvktuwbq-alAM')
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+if not TELEGRAM_BOT_TOKEN:
+    logger.error("❌ TELEGRAM_BOT_TOKEN environment variable not set!")
+    raise ValueError("TELEGRAM_BOT_TOKEN is required")
 PLAYLIST_FILE = os.path.join(os.path.dirname(__file__), 'playlist.json')
 
 logger.info(f"📁 Playlist file: {PLAYLIST_FILE}")
