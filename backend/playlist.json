@@ -1,0 +1,28 @@
+{
+  "tracks": [
+    {
+      "file_id": "CQACAgEAAxkBAAOKaanmg19-ZbxvkLdbhm3YtitjnQUAAuwFAAKCpXBEHvugV838pgw6BA",
+      "file_unique_id": "AgAD7AUAAoKlcEQ",
+      "title": "Mud Shake - Everything We Didn't Say",
+      "artist": "Mud Shake",
+      "duration": 217,
+      "source": "telegram"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAOLaanmg_E3I8eejmF0s3Qjz37TzVQAAu0FAAKCpXBERRQmriQ1kP86BA",
+      "file_unique_id": "AgAD7QUAAoKlcEQ",
+      "title": "Mud Shake - The Road",
+      "artist": "Mud Shake",
+      "duration": 223,
+      "source": "telegram"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAOMaanmgwxoKAOefm0XduZREUAAATaOAAKUBgACgqV4RIvXDNpxQPmXOgQ",
+      "file_unique_id": "AgADlAYAAoKleEQ",
+      "title": "Cacao",
+      "artist": "Ángulos Muertos",
+      "duration": 223,
+      "source": "telegram"
+    }
+  ]
+}
