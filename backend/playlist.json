@@ -1,7 +1,39 @@
 {
   "tracks": [
     {
-      "file_id": "CQACAgEAAxkBAAOKaanmg19-ZbxvkLdbhm3YtitjnQUAAuwFAAKCpXBEHvugV838pgw6BA",
+      "file_id": "CQACAgEAAxkBAAOQaasJAg3W1SD82xep1ci-B0RATCAAAlgGAAJmDVhFUwLdYv-LcTw6BA",
+      "file_unique_id": "AgADWAYAAmYNWEU",
+      "title": "Foo Fighters - Monkey Wrench",
+      "artist": "Foo Fighters",
+      "duration": 231,
+      "source": "telegram"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAORaasJAmT5f_9-KIaS_-r35oU4Y-AAAlkGAAJmDVhFN_-aWAABuiuHOgQ",
+      "file_unique_id": "AgADWQYAAmYNWEU",
+      "title": "No Doubt - Don't Speak (Lyrics)",
+      "artist": "7clouds",
+      "duration": 261,
+      "source": "telegram"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAOSaasJAru7Ho8HPqy7s6eW0vuYenoAAloGAAJmDVhFbWSJb8wH6xM6BA",
+      "file_unique_id": "AgADWgYAAmYNWEU",
+      "title": "Soundgarden - Fell On Black Days.mp3",
+      "artist": "Unknown Artist",
+      "duration": 280,
+      "source": "telegram"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAOTaasJAj9QP6AOdmPKoY5ual4Mw-UAAlsGAAJmDVhFwJZ_Z2R64wY6BA",
+      "file_unique_id": "AgADWwYAAmYNWEU",
+      "title": "Sound Of A Gun",
+      "artist": "Audioslave",
+      "duration": 260,
+      "source": "telegram"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAOaaasJMDdhpAW_iLQDbE3BS30Z6q0AAuwFAAKCpXBEHvugV838pgw6BA",
       "file_unique_id": "AgAD7AUAAoKlcEQ",
       "title": "Mud Shake - Everything We Didn't Say",
       "artist": "Mud Shake",
@@ -9,7 +41,7 @@
       "source": "telegram"
     },
     {
-      "file_id": "CQACAgEAAxkBAAOLaanmg_E3I8eejmF0s3Qjz37TzVQAAu0FAAKCpXBERRQmriQ1kP86BA",
+      "file_id": "CQACAgEAAxkBAAObaasJMLxYzt9GOYKgBEp-4o0bNnEAAu0FAAKCpXBERRQmriQ1kP86BA",
       "file_unique_id": "AgAD7QUAAoKlcEQ",
       "title": "Mud Shake - The Road",
       "artist": "Mud Shake",
@@ -17,7 +49,7 @@
       "source": "telegram"
     },
     {
-      "file_id": "CQACAgEAAxkBAAOMaanmgwxoKAOefm0XduZREUAAATaOAAKUBgACgqV4RIvXDNpxQPmXOgQ",
+      "file_id": "CQACAgEAAxkBAAOcaasJMIQxgRi0YEZf3vWns1mXnMgAApQGAAKCpXhEi9cM2nFA-Zc6BA",
       "file_unique_id": "AgADlAYAAoKleEQ",
       "title": "Cacao",
       "artist": "Ángulos Muertos",
