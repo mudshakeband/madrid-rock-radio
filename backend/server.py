@@ -161,7 +161,7 @@ def get_current_position() -> float:
         return radio_state.position
     
     elapsed = time.time() - radio_state.started_at
-    return elapsed % max(radio_state.current_track.duration, 1)
+    return elapsed
 
 def get_upcoming_tracks(count: int = 3) -> List[Track]:
     """Get next N tracks in queue"""
