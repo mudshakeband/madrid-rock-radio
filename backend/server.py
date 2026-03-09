@@ -186,7 +186,7 @@ async def get_radio_state():
     
     # Check if track ended
     if (radio_state.current_track and 
-        current_position >= radio_state.current_track.duration - 1):
+        current_position >= radio_state.current_track.duration):
         await play_next_track()
         current_position = 0
     
