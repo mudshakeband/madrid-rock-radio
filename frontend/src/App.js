@@ -436,7 +436,6 @@ function App() {
       {/* Audio Element - key prop prevents React from reusing */}
       <audio 
         ref={audioRef}
-        key="radio-audio"
         preload="auto"
         onEnded={() => {
           console.log('🎵 Track ended');
