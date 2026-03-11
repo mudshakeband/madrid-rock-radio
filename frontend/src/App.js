@@ -46,7 +46,6 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [volume, setVolume] = useState(7);
   const [isTunedIn, setIsTunedIn] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState(null);
   const [favorite, setFavorite] = useState(null);
@@ -270,48 +269,38 @@ function App() {
   }, []);
 
   // Toggle tune in
-  const toggleTuneIn = async () => {
-    if (!audioRef.current) return;
-    
-    if (!isTunedIn) {
-      // Tune in
-      try {
-        const response = await axios.get(`${API}/radio/stream`);
-        if (response.data.audio_url && radioState?.current_track) {
-          setIsTunedIn(true);
-          setIsMuted(false);
-          setPlayingFavorite(false);
-          
-          // Load the track
-          await loadTrack(
-            response.data.audio_url,
-            response.data.position || 0,
-            radioState.current_track.id
-          );
-        }
-      } catch (e) {
-        console.error("Error tuning in:", e);
-        setError("Failed to tune in");
-        setIsTunedIn(false);
+const toggleTuneIn = async () => {
+  if (!audioRef.current) return;
+  
+  if (!isTunedIn) {
+    // Tune in - start radio
+    try {
+      const response = await axios.get(`${API}/radio/stream`);
+      if (response.data.audio_url && radioState?.current_track) {
+        setIsTunedIn(true);
+        setPlayingFavorite(false);
+        
+        // Load the track
+        await loadTrack(
+          response.data.audio_url,
+          response.data.position || 0,
+          radioState.current_track.id
+        );
       }
-    } else {
-      // Toggle mute
-      if (isMuted) {
-        if (audioRef.current) {
-          audioRef.current.volume = volume / 10;
-          if (audioRef.current.paused) {
-            audioRef.current.play().catch(console.error);
-          }
-        }
-        setIsMuted(false);
-      } else {
-        if (audioRef.current) {
-          audioRef.current.volume = 0;
-        }
-        setIsMuted(true);
-      }
+    } catch (e) {
+      console.error("Error tuning in:", e);
+      setError("Failed to tune in");
+      setIsTunedIn(false);
     }
-  };
+  } else {
+    // Tune out - stop radio
+    setIsTunedIn(false);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+  }
+};
 
   // Update time display
   useEffect(() => {
@@ -563,9 +552,7 @@ function App() {
               className="volume-slider horizontal"
             />
           </div>
-          
-          <div className="button-group">
-          
+                    
           <button 
             className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''} ${isMuted ? 'muted' : ''}`}
             onClick={toggleTuneIn}
