@@ -132,7 +132,7 @@ function App() {
         
         // Set position
         audioRef.current.currentTime = position || 0;
-        audioRef.current.volume = volume / 10;
+        audioRef.current.volume = isMuted ? 0 : volume / 10;
         
         if (trackId) {
           setCurrentTrackId(trackId);
@@ -199,7 +199,7 @@ function App() {
       isLoadingTrackRef.current = false;
       abortControllerRef.current = null;
     }
-  }, [volume, isTunedIn, playingFavorite, loadedSrc]);
+  }, [volume, isMuted, isTunedIn, playingFavorite, loadedSrc]);
 
   // Fetch favorite
   const fetchFavorite = useCallback(async () => {
@@ -319,7 +319,7 @@ const toggleTuneIn = async () => {
   // Volume change
   const handleVolumeChange = (newVolume) => {
     setVolume(newVolume);
-    if (audioRef.current) {
+    if (audioRef.current && !isMuted) {
       audioRef.current.volume = newVolume / 10;
     }
   };
@@ -561,6 +561,18 @@ const toggleTuneIn = async () => {
   <Power size={24} />
 	  </button>
           
+          {/* ==================== FAVORITES SECTION ====================
+              TEMPORARILY HIDDEN - Feature under development
+              
+              TODO for future implementation:
+              - Backend persistence for user-specific favorites
+              - Multiple favorite slots (playlist of favorites)
+              - Sync favorites across devices
+              - Consider using database instead of in-memory storage
+              
+              Code preserved below - uncomment when ready to implement
+              =========================================================
+          
           {!playingFavorite ? (
             <div className="fav-controls split">
               <button 
@@ -590,14 +602,16 @@ const toggleTuneIn = async () => {
             </button>
           )}
           
+          */}
+          
           <button 
             className="control-btn icon-only"
             onClick={() => {
-              if (currentTrack?.youtube_url) {
-                window.open(currentTrack.youtube_url, '_blank');
+              if (currentTrack?.band_link) {
+                window.open(currentTrack.band_link, '_blank');
               }
             }}
-            disabled={!currentTrack}
+            disabled={!currentTrack?.band_link}
             title="Band info"
           >
             <ExternalLink size={22} />
