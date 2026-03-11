@@ -554,18 +554,12 @@ const toggleTuneIn = async () => {
           </div>
                     
           <button 
-            className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''} ${isMuted ? 'muted' : ''}`}
-            onClick={toggleTuneIn}
-            title={!isTunedIn ? "Tune in" : isMuted ? "Unmute" : "Mute"}
-          >
-            {!isTunedIn ? (
-              <Power size={24} />
-            ) : isMuted ? (
-              <VolumeX size={24} />
-            ) : (
-              <Volume2 size={24} />
-            )}
-          </button>
+  className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''}`}
+  onClick={toggleTuneIn}
+  title={!isTunedIn ? "Tune in" : "Tune out"}
+>
+  <Power size={24} />
+	  </button>
           
           {!playingFavorite ? (
             <div className="fav-controls split">
