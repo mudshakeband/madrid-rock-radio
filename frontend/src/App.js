@@ -132,7 +132,7 @@ function App() {
         
         // Set position
         audioRef.current.currentTime = position || 0;
-        audioRef.current.volume = isMuted ? 0 : volume / 10;
+        audioRef.current.volume = volume / 10;
         
         if (trackId) {
           setCurrentTrackId(trackId);
@@ -199,7 +199,7 @@ function App() {
       isLoadingTrackRef.current = false;
       abortControllerRef.current = null;
     }
-  }, [volume, isMuted, isTunedIn, playingFavorite, loadedSrc]);
+  }, [volume, isTunedIn, playingFavorite, loadedSrc]);
 
   // Fetch favorite
   const fetchFavorite = useCallback(async () => {
@@ -319,7 +319,7 @@ const toggleTuneIn = async () => {
   // Volume change
   const handleVolumeChange = (newVolume) => {
     setVolume(newVolume);
-    if (audioRef.current && !isMuted) {
+    if (audioRef.current) {
       audioRef.current.volume = newVolume / 10;
     }
   };
