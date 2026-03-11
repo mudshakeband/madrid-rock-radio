@@ -561,48 +561,7 @@ const toggleTuneIn = async () => {
   <Power size={24} />
 	  </button>
           
-          {/* ==================== FAVORITES SECTION ====================
-              TEMPORARILY HIDDEN - Feature under development
-              
-              TODO for future implementation:
-              - Backend persistence for user-specific favorites
-              - Multiple favorite slots (playlist of favorites)
-              - Sync favorites across devices
-              - Consider using database instead of in-memory storage
-              
-              Code preserved below - uncomment when ready to implement
-              =========================================================
-          
-          {!playingFavorite ? (
-            <div className="fav-controls split">
-              <button 
-                className="control-btn fav-btn icon-only"
-                onClick={saveFavorite}
-                disabled={!currentTrack}
-                title="Save favorite"
-              >
-                <Heart size={22} fill={favorite ? "currentColor" : "none"} />
-              </button>
-              <button 
-                className="control-btn fav-btn icon-only"
-                onClick={playFav}
-                disabled={!favorite}
-                title="Play favorite"
-              >
-                <Play size={22} />
-              </button>
-            </div>
-          ) : (
-            <button 
-              className="control-btn secondary back-to-live-btn" 
-              onClick={backToLive} 
-              title="Back to live"
-            >
-              <RadioIcon size={22} />
-            </button>
-          )}
-          
-          */}
+          {/* Favorites feature hidden - preserved in git history */}
           
           <button 
             className="control-btn icon-only"
