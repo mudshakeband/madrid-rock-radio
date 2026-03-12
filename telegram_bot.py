@@ -13,7 +13,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8060531889:AAFC4j3f0KLie_tV7Wu9i3jH95XCEh7hSDY')
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8060531889:AAEwQHDqNyTqFCcRw4BWidevsfYu59Ybmps')
 PLAYLIST_FILE = Path(__file__).parent / 'backend' / 'playlist.json'
 
 # Conversation states

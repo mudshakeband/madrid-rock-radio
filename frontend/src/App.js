@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import "./App.css";
 import axios from "axios";
+import html2canvas from "html2canvas";
 import { Play, VolumeX, Volume2, Share2, Heart, Radio as RadioIcon, Power, ExternalLink } from "lucide-react";
 
 // FIXED: Hardcoded backend URL to ensure correct API endpoint is always used
@@ -59,6 +60,7 @@ function App() {
   const syncIntervalRef = useRef(null);
   const isLoadingTrackRef = useRef(false);
   const abortControllerRef = useRef(null);
+  const headUnitRef = useRef(null);
 
   // Fetch radio state - but DON'T automatically reload audio
   const fetchRadioState = useCallback(async () => {
@@ -390,19 +392,38 @@ function App() {
     try {
       const response = await axios.get(`${API}/share/current`);
       const shareData = response.data;
-      
-      if (navigator.share) {
-        await navigator.share({
-          title: shareData.title,
-          text: shareData.description,
-          url: shareData.url
+
+      // Try mobile share with screenshot
+      if (headUnitRef.current && navigator.canShare) {
+        const canvas = await html2canvas(headUnitRef.current, {
+          backgroundColor: null,
+          scale: 2,
+          useCORS: true,
         });
-      } else {
-        await navigator.clipboard.writeText(shareData.url);
-        showToast("Link copied!");
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const file = new File([blob], 'madrid-rock-radio.png', { type: 'image/png' });
+
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: shareData.title,
+            text: shareData.description,
+            url: shareData.url,
+            files: [file]
+          });
+          return;
+        }
       }
+
+      // Desktop fallback: copy URL to clipboard
+      await navigator.clipboard.writeText(shareData.url);
+      showToast("Link copied!");
+
     } catch (e) {
-      console.error("Error sharing:", e);
+      if (e.name !== 'AbortError') {
+        console.error("Error sharing:", e);
+        showToast("Could not share", "error");
+      }
     }
   };
 
@@ -477,7 +498,7 @@ function App() {
       />
       
       {/* Head Unit */}
-      <div className="head-unit">
+      <div className="head-unit" ref={headUnitRef}>
         
         {/* Main LCD Display */}
         <div className="lcd-screen">
@@ -583,7 +604,7 @@ function App() {
           {/* Favorites feature temporarily hidden - awaiting backend development */}
           
           <button 
-  className="control-btn icon-only"
+  className="control-btn primary"
   onClick={() => {
     if (currentTrack?.band_link) {
       window.open(currentTrack.band_link, '_blank');
@@ -592,7 +613,8 @@ function App() {
   disabled={!currentTrack?.band_link}
   title="Band info"
 >
-  <ExternalLink size={22} />
+  <ExternalLink size={20} />
+  BAND INFO
 </button>
           
           <button 
@@ -607,8 +629,7 @@ function App() {
         </div>
         
         <div className="footer">
-          MADRID ROCK RADIO • {radioState?.playlist_count || 0} tracks
-        </div>
+</div>
       </div>
     </div>
   );
