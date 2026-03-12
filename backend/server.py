@@ -38,6 +38,7 @@ class Track(BaseModel):
     duration: int = 180
     audio_url: Optional[str] = None
     source: str = "telegram"
+    band_link: Optional[str] = None
 
 class RadioState(BaseModel):
     current_track: Optional[Track] = None
