@@ -580,34 +580,7 @@ function App() {
             )}
           </button>
           
-          {!playingFavorite ? (
-            <div className="fav-controls split">
-              <button 
-                className="control-btn fav-btn icon-only"
-                onClick={saveFavorite}
-                disabled={!currentTrack}
-                title="Save favorite"
-              >
-                <Heart size={22} fill={favorite ? "currentColor" : "none"} />
-              </button>
-              <button 
-                className="control-btn fav-btn icon-only"
-                onClick={playFav}
-                disabled={!favorite}
-                title="Play favorite"
-              >
-                <Play size={22} />
-              </button>
-            </div>
-          ) : (
-            <button 
-              className="control-btn secondary back-to-live-btn" 
-              onClick={backToLive} 
-              title="Back to live"
-            >
-              <RadioIcon size={22} />
-            </button>
-          )}
+          {/* Favorites feature temporarily hidden - awaiting backend development */}
           
           <button 
   className="control-btn icon-only"
