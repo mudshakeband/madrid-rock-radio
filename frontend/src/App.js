@@ -610,17 +610,17 @@ function App() {
           )}
           
           <button 
-            className="control-btn icon-only"
-            onClick={() => {
-              if (currentTrack?.youtube_url) {
-                window.open(currentTrack.youtube_url, '_blank');
-              }
-            }}
-            disabled={!currentTrack}
-            title="Band info"
-          >
-            <ExternalLink size={22} />
-          </button>
+  className="control-btn icon-only"
+  onClick={() => {
+    if (currentTrack?.band_link) {
+      window.open(currentTrack.band_link, '_blank');
+    }
+  }}
+  disabled={!currentTrack?.band_link}
+  title="Band info"
+>
+  <ExternalLink size={22} />
+</button>
           
           <button 
             className="control-btn icon-only"
