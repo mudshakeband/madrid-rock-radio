@@ -6,7 +6,8 @@
       "title": "Monkey Wrench",
       "artist": "Foo Fighters",
       "duration": 231,
-      "source": "telegram"
+      "source": "telegram",
+      "band_link": "https://en.wikipedia.org/wiki/Foo_Fighters"
     },
     {
       "file_id": "CQACAgEAAxkBAAORaasJAmT5f_9-KIaS_-r35oU4Y-AAAlkGAAJmDVhFN_-aWAABuiuHOgQ",
@@ -14,7 +15,8 @@
       "title": "Don't Speak",
       "artist": "No Doubt",
       "duration": 261,
-      "source": "telegram"
+      "source": "telegram",
+      "band_link": "https://en.wikipedia.org/wiki/No_Doubt"
     },
     {
       "file_id": "CQACAgEAAxkBAAOSaasJAru7Ho8HPqy7s6eW0vuYenoAAloGAAJmDVhFbWSJb8wH6xM6BA",
@@ -22,7 +24,8 @@
       "title": "Fell On Black Days",
       "artist": "Soundgarden",
       "duration": 280,
-      "source": "telegram"
+      "source": "telegram",
+      "band_link": "https://en.wikipedia.org/wiki/Soundgarden"
     },
     {
       "file_id": "CQACAgEAAxkBAAPAabHrPXsgoYLV9RueGfNmaae6sXcAAuwFAAL4H5FFR9g4laNmBto6BA",
@@ -30,7 +33,8 @@
       "title": "The Road",
       "artist": "Mud Shake",
       "duration": 222,
-      "source": "telegram"
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/mudshake.band"
     },
     {
       "file_id": "CQACAgEAAxkBAAPIabHsnQiXrL1oPDHD0iX6ftWAzZoAAu4FAAL4H5FFMc7KAAH9cBGQOgQ",
@@ -38,7 +42,8 @@
       "title": "Carpe Diem",
       "artist": "HIT",
       "duration": 288,
-      "source": "telegram"
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/hitbandmadrid"
     },
     {
       "file_id": "CQACAgEAAxkBAAPOabHtWSEo2hx-fq4HFi9vUuvo5IgAAu8FAAL4H5FF5_XVqEYbPwU6BA",
@@ -46,7 +51,8 @@
       "title": "Cacao",
       "artist": "Ángulos Muertos",
       "duration": 223,
-      "source": "telegram"
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/angulos.muertos"
     }
   ]
 }
