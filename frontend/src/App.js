@@ -46,6 +46,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [volume, setVolume] = useState(7);
   const [isTunedIn, setIsTunedIn] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState(null);
   const [favorite, setFavorite] = useState(null);
@@ -269,38 +270,48 @@ function App() {
   }, []);
 
   // Toggle tune in
-const toggleTuneIn = async () => {
-  if (!audioRef.current) return;
-  
-  if (!isTunedIn) {
-    // Tune in - start radio
-    try {
-      const response = await axios.get(`${API}/radio/stream`);
-      if (response.data.audio_url && radioState?.current_track) {
-        setIsTunedIn(true);
-        setPlayingFavorite(false);
-        
-        // Load the track
-        await loadTrack(
-          response.data.audio_url,
-          response.data.position || 0,
-          radioState.current_track.id
-        );
+  const toggleTuneIn = async () => {
+    if (!audioRef.current) return;
+    
+    if (!isTunedIn) {
+      // Tune in
+      try {
+        const response = await axios.get(`${API}/radio/stream`);
+        if (response.data.audio_url && radioState?.current_track) {
+          setIsTunedIn(true);
+          setIsMuted(false);
+          setPlayingFavorite(false);
+          
+          // Load the track
+          await loadTrack(
+            response.data.audio_url,
+            response.data.position || 0,
+            radioState.current_track.id
+          );
+        }
+      } catch (e) {
+        console.error("Error tuning in:", e);
+        setError("Failed to tune in");
+        setIsTunedIn(false);
       }
-    } catch (e) {
-      console.error("Error tuning in:", e);
-      setError("Failed to tune in");
-      setIsTunedIn(false);
+    } else {
+      // Toggle mute
+      if (isMuted) {
+        if (audioRef.current) {
+          audioRef.current.volume = volume / 10;
+          if (audioRef.current.paused) {
+            audioRef.current.play().catch(console.error);
+          }
+        }
+        setIsMuted(false);
+      } else {
+        if (audioRef.current) {
+          audioRef.current.volume = 0;
+        }
+        setIsMuted(true);
+      }
     }
-  } else {
-    // Tune out - stop radio
-    setIsTunedIn(false);
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-    }
-  }
-};
+  };
 
   // Update time display
   useEffect(() => {
@@ -552,25 +563,60 @@ const toggleTuneIn = async () => {
               className="volume-slider horizontal"
             />
           </div>
-                    
-          <button 
-  className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''}`}
-  onClick={toggleTuneIn}
-  title={!isTunedIn ? "Tune in" : "Tune out"}
->
-  <Power size={24} />
-</button>
           
-          {/* Favorites feature hidden - preserved in git history */}
+          <div className="button-group">
+          
+          <button 
+            className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''} ${isMuted ? 'muted' : ''}`}
+            onClick={toggleTuneIn}
+            title={!isTunedIn ? "Tune in" : isMuted ? "Unmute" : "Mute"}
+          >
+            {!isTunedIn ? (
+              <Power size={24} />
+            ) : isMuted ? (
+              <VolumeX size={24} />
+            ) : (
+              <Volume2 size={24} />
+            )}
+          </button>
+          
+          {!playingFavorite ? (
+            <div className="fav-controls split">
+              <button 
+                className="control-btn fav-btn icon-only"
+                onClick={saveFavorite}
+                disabled={!currentTrack}
+                title="Save favorite"
+              >
+                <Heart size={22} fill={favorite ? "currentColor" : "none"} />
+              </button>
+              <button 
+                className="control-btn fav-btn icon-only"
+                onClick={playFav}
+                disabled={!favorite}
+                title="Play favorite"
+              >
+                <Play size={22} />
+              </button>
+            </div>
+          ) : (
+            <button 
+              className="control-btn secondary back-to-live-btn" 
+              onClick={backToLive} 
+              title="Back to live"
+            >
+              <RadioIcon size={22} />
+            </button>
+          )}
           
           <button 
             className="control-btn icon-only"
             onClick={() => {
-              if (currentTrack?.band_link) {
-                window.open(currentTrack.band_link, '_blank');
+              if (currentTrack?.youtube_url) {
+                window.open(currentTrack.youtube_url, '_blank');
               }
             }}
-            disabled={!currentTrack?.band_link}
+            disabled={!currentTrack}
             title="Band info"
           >
             <ExternalLink size={22} />
