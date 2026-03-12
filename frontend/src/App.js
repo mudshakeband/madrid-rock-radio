@@ -559,7 +559,7 @@ const toggleTuneIn = async () => {
   title={!isTunedIn ? "Tune in" : "Tune out"}
 >
   <Power size={24} />
-	  </button>
+</button>
           
           {/* Favorites feature hidden - preserved in git history */}
           
