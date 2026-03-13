@@ -297,12 +297,12 @@ async def get_share_data():
         raise HTTPException(status_code=404, detail="No track playing")
     
     track = radio_state.current_track
-    share_url = f"https://madrid-rock-radio.onrender.com/?track={track.id}"
+    share_url = "https://madrid-rock-radio.onrender.com"
     
     return {
         "url": share_url,
         "title": f"🎸 {track.title} - {track.artist}",
-        "description": "Now playing on Madrid Rock Radio",
+        "description": "madrid-rock-radio.onrender.com",
         "track": track.model_dump()
     }
 
