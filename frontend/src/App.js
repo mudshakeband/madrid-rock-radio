@@ -266,7 +266,7 @@ function App() {
       }
       
       useFirstLayer = !useFirstLayer;
-    }, 60000);
+    }, 1800000);
     
     return () => clearInterval(interval);
   }, []);
