@@ -156,6 +156,7 @@ async def play_next_track():
     radio_state.is_playing = True
     
     logger.info(f"▶ Now playing: {radio_state.current_track.artist} - {radio_state.current_track.title}")
+    record_track_play(radio_state.current_track.id)
 
 def get_current_position() -> float:
     """Calculate current playback position"""
@@ -184,8 +185,7 @@ def get_upcoming_tracks(count: int = 3) -> List[Track]:
 @api_router.get("/radio/state")
 async def get_radio_state(request: Request):
     record_listener(request.client.host)
-    if radio_state.current_track:
-        record_track_play(radio_state.current_track.id)
+    
     """Get current radio state"""
     current_position = get_current_position()
     
