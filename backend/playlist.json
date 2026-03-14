@@ -1,15 +1,6 @@
 {
   "tracks": [
     {
-      "file_id": "CQACAgEAAxkBAAOQaasJAg3W1SD82xep1ci-B0RATCAAAlgGAAJmDVhFUwLdYv-LcTw6BA",
-      "file_unique_id": "AgADWAYAAmYNWEU",
-      "title": "Monkey Wrench",
-      "artist": "Foo Fighters",
-      "duration": 231,
-      "source": "telegram",
-      "band_link": "https://en.wikipedia.org/wiki/Foo_Fighters"
-    },
-    {
       "file_id": "CQACAgEAAxkBAAORaasJAmT5f_9-KIaS_-r35oU4Y-AAAlkGAAJmDVhFN_-aWAABuiuHOgQ",
       "file_unique_id": "AgADWQYAAmYNWEU",
       "title": "Don't Speak",
@@ -62,6 +53,33 @@
       "duration": 171,
       "source": "telegram",
       "band_link": "https://open.spotify.com/artist/5JM64Bw4ARIG2QUZdFNvTG"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBAAFptXVvX6aU7_f0uW5USdvxGUIaVAACRAYAA8mxRZd6oNDgA4p-OgQ",
+      "file_unique_id": "AgADRAYAA8mxRQ",
+      "title": "Set To Fly",
+      "artist": "The Nightrain",
+      "duration": 291,
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/nightrain_band/"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBAWm1dW8kf01UE3n-JE8Dn-9LGAX4AAJFBgADybFF6K7wg4ToRVc6BA",
+      "file_unique_id": "AgADRQYAA8mxRQ",
+      "title": "Frases Vacías",
+      "artist": "57 Grados",
+      "duration": 226,
+      "source": "telegram",
+      "band_link": "https://linktr.ee/57grados"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBAmm1dW_tSdIMnzxIYi8algAB0JpHyQACRgYAA8mxRXRh_RRGY0WMOgQ",
+      "file_unique_id": "AgADRgYAA8mxRQ",
+      "title": "Hidden",
+      "artist": "Pineapple Doom",
+      "duration": 192,
+      "source": "telegram",
+      "band_link": "https://open.spotify.com/artist/2jj5no664A24FcqHfFZvzd"
     }
   ]
 }
