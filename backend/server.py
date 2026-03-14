@@ -1,7 +1,8 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
+from analytics import record_listener, record_track_play, get_stats
 import os
 import logging
 import asyncio
@@ -181,7 +182,10 @@ def get_upcoming_tracks(count: int = 3) -> List[Track]:
 
 # ==================== API ROUTES ====================
 @api_router.get("/radio/state")
-async def get_radio_state():
+async def get_radio_state(request: Request):
+    record_listener(request.client.host)
+    if radio_state.current_track:
+        record_track_play(radio_state.current_track.id)
     """Get current radio state"""
     current_position = get_current_position()
     
@@ -305,6 +309,15 @@ async def get_share_data():
         "description": "madrid-rock-radio.onrender.com",
         "track": track.model_dump()
     }
+
+# ==================== STATS ====================
+STATS_KEY = os.getenv('STATS_KEY', 'madridrock')
+
+@api_router.get("/stats")
+async def get_radio_stats(key: str = ""):
+    if key != STATS_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return get_stats(radio_state.playlist)
 
 # ==================== SETUP ====================
 app.include_router(api_router)
