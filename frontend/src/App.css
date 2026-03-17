@@ -262,7 +262,8 @@ body {
 
 .track-title.scrolling {
   display: inline-block;
-  animation: marquee-continuous 30s linear infinite;
+  animation: marquee-continuous 15s linear infinite;
+  padding-left: 100%;
 }
 
 .track-artist {
@@ -555,6 +556,12 @@ body {
   }
   100% { 
     transform: translateX(-50%); 
+  }
+}
+
+@keyframes marquee-continuous {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); 
   }
 }
 
