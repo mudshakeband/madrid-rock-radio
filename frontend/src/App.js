@@ -505,7 +505,7 @@ function App() {
           <div className="lcd-header">
             <div className="station-badge">
               <RadioIcon size={14} />
-              MADRID ROCK
+              MADROCK
             </div>
             <div className="status-indicators">
               <div className={`led ${isTunedIn ? 'active' : ''}`}></div>
