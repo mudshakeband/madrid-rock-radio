@@ -19,15 +19,6 @@
       "band_link": "https://www.instagram.com/angulos.muertos"
     },
     {
-      "file_id": "CQACAgEAAxkBAAP6abQzyQadQkMPvzkISLbsartZf3YAAqUHAAPJqUXOZHyv_DbHUjoE",
-      "file_unique_id": "AgADpQcAA8mpRQ",
-      "title": "Views From The Inside",
-      "artist": "The Vølts",
-      "duration": 171,
-      "source": "telegram",
-      "band_link": "https://open.spotify.com/artist/5JM64Bw4ARIG2QUZdFNvTG"
-    },
-    {
       "file_id": "CQACAgEAAxkBAAIBAAFptXVvX6aU7_f0uW5USdvxGUIaVAACRAYAA8mxRZd6oNDgA4p-OgQ",
       "file_unique_id": "AgADRAYAA8mxRQ",
       "title": "Set To Fly",
@@ -89,6 +80,42 @@
       "duration": 222,
       "source": "telegram",
       "band_link": "https://www.instagram.com/mudshake.band/"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBNGm4qvOMsql-AXxhTlvoCeSkk4W7AAJwBwACK4nJReEF-B1W-i2UOgQ",
+      "file_unique_id": "AgADcAcAAiuJyUU",
+      "title": "Time To Pretend",
+      "artist": "Mad People",
+      "duration": 192,
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/madpeopleband/"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBNWm4qvPdgEdQzScBOxVwgaI2zU_vAAJxBwACK4nJRYvBveTaLI9jOgQ",
+      "file_unique_id": "AgADcQcAAiuJyUU",
+      "title": "Into My Head",
+      "artist": "Lima Shakes",
+      "duration": 175,
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/limashakes/"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBNmm4qvNwjjj5HNYOk2fZkm_mgkhOAAJyBwACK4nJRVKXLSgONRx4OgQ",
+      "file_unique_id": "AgADcgcAAiuJyUU",
+      "title": "Decisión Equivocada",
+      "artist": "Impostores",
+      "duration": 205,
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/impostoresoficial/"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBOmm4qvmBAbooUt9dGmWUISnw0WDdAAJzBwACK4nJRUqnwc06-Ja1OgQ",
+      "file_unique_id": "AgADcwcAAiuJyUU",
+      "title": "Views From The Inside",
+      "artist": "The Vølts",
+      "duration": 170,
+      "source": "telegram",
+      "band_link": "https://open.spotify.com/artist/5JM64Bw4ARIG2QUZdFNvTG"
     }
   ]
 }
