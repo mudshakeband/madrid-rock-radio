@@ -97,13 +97,13 @@ def load_playlist_from_json() -> List[Track]:
             tracks = []
             
             for original_idx, track_data in enumerate(data.get('tracks', []), start=1):
-    # Get fresh Telegram URL
-    if track_data.get('file_id'):
-        track_data['audio_url'] = get_telegram_audio_url(track_data['file_id'])
-    
-    track = Track(**track_data)
-    track.playlist_index = original_idx  # preserve original position
-    tracks.append(track)
+                # Get fresh Telegram URL
+                if track_data.get('file_id'):
+                    track_data['audio_url'] = get_telegram_audio_url(track_data['file_id'])
+                
+                track = Track(**track_data)
+                track.playlist_index = original_idx  # preserve original position
+                tracks.append(track)
             
             logger.info(f"✅ Loaded {len(tracks)} tracks from playlist.json")
             return tracks
