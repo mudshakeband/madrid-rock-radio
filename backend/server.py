@@ -11,6 +11,8 @@ import time
 import uuid
 import json
 import httpx
+from datetime import datetime
+import pytz
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -56,6 +58,11 @@ class UserFavorite(BaseModel):
 # ==================== GLOBAL STATE ====================
 radio_state = RadioState()
 user_favorites = {}
+
+# ==================== SCHEDULING ====================
+
+MADRID_TZ = pytz.timezone("Europe/Madrid")
+scheduled_track: Optional[dict] = None  # {"track": Track, "play_at": datetime, "origin": "staged"|"main"}
 
 # ==================== TELEGRAM HELPERS ====================
 def get_telegram_audio_url(file_id: str) -> Optional[str]:
@@ -151,6 +158,19 @@ async def play_next_track():
         if new_url:
             radio_state.current_track.audio_url = new_url
     
+    # Check if a scheduled track is due
+    global scheduled_track
+    if scheduled_track:
+        now = datetime.now(MADRID_TZ)
+        if now >= scheduled_track["play_at"]:
+            logger.info(f"⏰ Playing scheduled track: {scheduled_track['track'].artist} - {scheduled_track['track'].title}")
+            radio_state.current_track = scheduled_track["track"]
+            # If it was a main playlist track, put it back; if staged, leave as-is
+            if scheduled_track["origin"] == "main":
+                if not any(t.id == scheduled_track["track"].id for t in radio_state.playlist):
+                    radio_state.playlist.insert(0, scheduled_track["track"])
+            scheduled_track = None
+            
     radio_state.started_at = time.time()
     radio_state.position = 0
     radio_state.is_playing = True
@@ -310,6 +330,97 @@ async def get_share_data():
         "track": track.model_dump()
     }
 
+# ==================== SCHEDULING ENDPOINTS ====================
+
+class QueueRequest(BaseModel):
+    track: Track
+    origin: str = "staged"  # "staged" or "main"
+
+class ScheduleRequest(BaseModel):
+    track: Track
+    time_str: str  # "HH:MM"
+    date_str: Optional[str] = None  # "DD/MM", optional
+    origin: str = "staged"
+
+@api_router.post("/schedule/queue")
+async def queue_track(req: QueueRequest):
+    """Inject track into next 4-6 positions in playlist"""
+    if not radio_state.playlist:
+        raise HTTPException(status_code=400, detail="Playlist is empty")
+    
+    current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                        if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+    
+    # Pick a random insert position within next 4-6 slots
+    insert_offset = random.randint(4, 6)
+    insert_idx = (current_idx + insert_offset) % len(radio_state.playlist)
+    
+    # Remove if already in playlist (main track case)
+    radio_state.playlist = [t for t in radio_state.playlist if t.id != req.track.id]
+    
+    # Recalculate insert index after possible removal
+    current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                        if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+    insert_idx = min((current_idx + insert_offset), len(radio_state.playlist))
+    
+    radio_state.playlist.insert(insert_idx, req.track)
+    
+    logger.info(f"🎯 Queued: {req.track.artist} - {req.track.title} at position ~{insert_offset}")
+    return {"message": f"Queued '{req.track.title}' to play in approximately {insert_offset} songs"}
+
+@api_router.post("/schedule/timed")
+async def schedule_track(req: ScheduleRequest):
+    """Schedule a track to play at a specific time"""
+    global scheduled_track
+    
+    now = datetime.now(MADRID_TZ)
+    
+    try:
+        hour, minute = map(int, req.time_str.split(":"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
+    
+    if req.date_str:
+        try:
+            day, month = map(int, req.date_str.split("/"))
+            year = now.year
+            play_at = MADRID_TZ.localize(datetime(year, month, day, hour, minute))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use DD/MM")
+    else:
+        # Next occurrence of HH:MM
+        play_at = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if play_at <= now:
+            from datetime import timedelta
+            play_at += timedelta(days=1)
+    
+    if play_at <= now:
+        raise HTTPException(status_code=400, detail="Scheduled time is in the past")
+    
+    scheduled_track = {
+        "track": req.track,
+        "play_at": play_at,
+        "origin": req.origin
+    }
+    
+    time_str = play_at.strftime("%d/%m at %H:%M")
+    logger.info(f"📅 Scheduled: {req.track.artist} - {req.track.title} for {time_str} Madrid time")
+    return {"message": f"Scheduled '{req.track.title}' for {time_str} (Madrid time)"}
+
+@api_router.get("/schedule/status")
+async def get_schedule_status():
+    """Check current schedule"""
+    if not scheduled_track:
+        return {"scheduled": None}
+    return {
+        "scheduled": {
+            "title": scheduled_track["track"].title,
+            "artist": scheduled_track["track"].artist,
+            "play_at": scheduled_track["play_at"].strftime("%d/%m at %H:%M"),
+            "origin": scheduled_track["origin"]
+        }
+    }
+    
 # ==================== STATS ====================
 STATS_KEY = os.getenv('STATS_KEY', 'madridrock')
 
@@ -317,7 +428,20 @@ STATS_KEY = os.getenv('STATS_KEY', 'madridrock')
 async def get_radio_stats(key: str = ""):
     if key != STATS_KEY:
         raise HTTPException(status_code=403, detail="Forbidden")
-    return get_stats(radio_state.playlist)
+
+    # Build upcoming list from current position
+    upcoming = get_upcoming_tracks(20)
+
+    stats = get_stats(radio_state.playlist, radio_state.current_track, upcoming)
+
+    # Add scheduled track info if any
+    stats["scheduled"] = {
+        "title": scheduled_track["track"].title,
+        "artist": scheduled_track["track"].artist,
+        "play_at": scheduled_track["play_at"].strftime("%d/%m at %H:%M")
+    } if scheduled_track else None
+
+    return stats
 
 # ==================== SETUP ====================
 app.include_router(api_router)

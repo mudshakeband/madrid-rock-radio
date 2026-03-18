@@ -6,6 +6,7 @@ session_start = datetime.now()
 active_listeners = {}  # ip -> last_seen timestamp
 total_sessions = 0
 track_plays = defaultdict(int)  # track_id -> play count
+track_last_played = {}  # track_id -> datetime of last play
 time_of_day_counts = defaultdict(int)  # morning/afternoon/sunset/night -> count
 
 def get_time_of_day():
@@ -32,21 +33,53 @@ def cleanup_inactive(timeout_seconds=10):
 
 def record_track_play(track_id: str):
     track_plays[track_id] += 1
+    track_last_played[track_id] = datetime.now()
 
-def get_stats(playlist):
+def get_stats(playlist, current_track=None, upcoming_tracks=None):
     cleanup_inactive()
     uptime = datetime.now() - session_start
 
-    top_tracks = []
-    for track in playlist:
-        plays = track_plays.get(track.id, 0)
-        if plays > 0:
-            top_tracks.append({
-                "title": track.title,
-                "artist": track.artist,
-                "plays": plays
-            })
-    top_tracks.sort(key=lambda x: x["plays"], reverse=True)
+    # Build index map: track_id -> fixed index (1-based, order in playlist.json)
+    index_map = {track.id: i + 1 for i, track in enumerate(playlist)}
+
+    def format_track(track, plays):
+        idx = index_map.get(track.id, "?")
+        play_word = "play" if plays == 1 else "plays"
+        return f"#{idx} - {track.artist} - {track.title} · {plays} {play_word}"
+
+    # ── UP NEXT (20 songs) ──────────────────────────────
+    up_next_list = []
+    if upcoming_tracks:
+        for track in upcoming_tracks[:20]:
+            plays = track_plays.get(track.id, 0)
+            up_next_list.append(format_track(track, plays))
+
+    # ── ALREADY PLAYED (most recent first) ──────────────
+    already_played_list = []
+    played_tracks = [(track, track_plays.get(track.id, 0))
+                     for track in playlist
+                     if track_plays.get(track.id, 0) > 0]
+
+    # Exclude current track from already played
+    if current_track:
+        played_tracks = [(t, p) for t, p in played_tracks if t.id != current_track.id]
+
+    # Sort by most recently played
+    played_tracks.sort(
+        key=lambda x: track_last_played.get(x[0].id, datetime.min),
+        reverse=True
+    )
+    for track, plays in played_tracks:
+        already_played_list.append(format_track(track, plays))
+
+    # ── TOP 5 (collapsed) ───────────────────────────────
+    top_tracks = sorted(
+        [(track, track_plays.get(track.id, 0)) for track in playlist
+         if track_plays.get(track.id, 0) > 0],
+        key=lambda x: x[1],
+        reverse=True
+    )[:5]
+    top_5_list = [format_track(track, plays) for track, plays in top_tracks]
 
     return {
         "session_start": session_start.strftime("%Y-%m-%d %H:%M:%S"),
@@ -54,5 +87,7 @@ def get_stats(playlist):
         "current_listeners": len(active_listeners),
         "total_sessions": total_sessions,
         "time_of_day_breakdown": dict(time_of_day_counts),
-        "top_tracks": top_tracks[:10]
+        "up_next": up_next_list,
+        "already_played": already_played_list,
+        "top_5": top_5_list
     }
