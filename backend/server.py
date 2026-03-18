@@ -42,6 +42,7 @@ class Track(BaseModel):
     audio_url: Optional[str] = None
     source: str = "telegram"
     band_link: Optional[str] = None
+    playlist_index: Optional[int] = None  # fixed position in playlist.json
 
 class RadioState(BaseModel):
     current_track: Optional[Track] = None
@@ -95,13 +96,14 @@ def load_playlist_from_json() -> List[Track]:
             data = json.load(f)
             tracks = []
             
-            for track_data in data.get('tracks', []):
-                # Get fresh Telegram URL
-                if track_data.get('file_id'):
-                    track_data['audio_url'] = get_telegram_audio_url(track_data['file_id'])
-                
-                track = Track(**track_data)
-                tracks.append(track)
+            for original_idx, track_data in enumerate(data.get('tracks', []), start=1):
+    # Get fresh Telegram URL
+    if track_data.get('file_id'):
+        track_data['audio_url'] = get_telegram_audio_url(track_data['file_id'])
+    
+    track = Track(**track_data)
+    track.playlist_index = original_idx  # preserve original position
+    tracks.append(track)
             
             logger.info(f"✅ Loaded {len(tracks)} tracks from playlist.json")
             return tracks

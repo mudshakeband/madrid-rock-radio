@@ -43,7 +43,7 @@ def get_stats(playlist, current_track=None, upcoming_tracks=None):
     index_map = {track.id: i + 1 for i, track in enumerate(playlist)}
 
     def format_track(track, plays):
-        idx = index_map.get(track.id, "?")
+        idx = getattr(track, 'playlist_index', None) or index_map.get(track.id, "?")
         play_word = "play" if plays == 1 else "plays"
         return f"#{idx} - {track.artist} - {track.title} · {plays} {play_word}"
 
