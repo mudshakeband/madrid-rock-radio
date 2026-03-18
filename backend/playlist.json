@@ -116,6 +116,44 @@
       "duration": 170,
       "source": "telegram",
       "band_link": "https://open.spotify.com/artist/5JM64Bw4ARIG2QUZdFNvTG"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBQGm5M7M54GBer6ZAEv2T8oyKLQs1AAKMBwACK4nJRape3aQ0xbw6OgQ",
+      "file_unique_id": "AgADjAcAAiuJyUU",
+      "title": "Rebel Alone",
+      "artist": "Garage Moon",
+      "duration": 296,
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/garagemoon.band/"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBXmm7FNxf4lxj6-0siPOX_w-AcqfOAAJ3BQACLqjYRQmBiseZbFRMOgQ",
+      "file_unique_id": "AgADdwUAAi6o2EU",
+      "title": "Tough",
+      "artist": "TAFF",
+      "duration": 133,
+      "source": "telegram",
+	  "band_link": "https://beacons.ai/taffband"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAIBX2m7FNyjWXmrPcYro2R9U0fJHaI_AAJ4BQACLqjYRW5237kcQ1wBOgQ",
+      "file_unique_id": "AgADeAUAAi6o2EU",
+      "title": "Time Trap",
+      "artist": "AmyJo Doh & The Spangles",
+      "duration": 170,
+      "source": "telegram",
+	  "band_link": "https://linktr.ee/AMYJODOHANDTHESPANGLES"
+    }
+  ],
+  "staged": [
+    {
+      "file_id": "CQACAgEAAxkBAAIBVmm6YO1-6wV_avW0mwABK6U28AsLqgACAwYAAi6o0EVcwxkckY4UIzoE",
+      "file_unique_id": "AgADAwYAAi6o0EU",
+      "title": "Wake Up",
+      "artist": "Mud Shake",
+      "duration": 211,
+      "source": "telegram",
+      "band_link": "https://www.instagram.com/mudshake.band/"
     }
   ]
 }
