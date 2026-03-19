@@ -8,6 +8,7 @@ total_sessions = 0
 track_plays = defaultdict(int)  # track_id -> play count
 track_last_played = {}  # track_id -> datetime of last play
 time_of_day_counts = defaultdict(int)  # morning/afternoon/sunset/night -> count
+peak_listeners_per_track = {}  # track_id -> peak simultaneous listeners (session only)
 
 def get_time_of_day():
     hour = datetime.now().hour
@@ -34,6 +35,11 @@ def cleanup_inactive(timeout_seconds=10):
 def record_track_play(track_id: str):
     track_plays[track_id] += 1
     track_last_played[track_id] = datetime.now()
+    # Snapshot listener count at track start — can be enhanced to track peak during playback
+    peak_listeners_per_track[track_id] = max(
+        peak_listeners_per_track.get(track_id, 0),
+        len(active_listeners)
+    )
 
 def get_stats(playlist, current_track=None, upcoming_tracks=None):
     cleanup_inactive()
@@ -74,12 +80,15 @@ def get_stats(playlist, current_track=None, upcoming_tracks=None):
 
     # ── TOP 5 (collapsed) ───────────────────────────────
     top_tracks = sorted(
-        [(track, track_plays.get(track.id, 0)) for track in playlist
+        [(track, peak_listeners_per_track.get(track.id, 0)) for track in playlist
          if track_plays.get(track.id, 0) > 0],
         key=lambda x: x[1],
         reverse=True
     )[:5]
-    top_5_list = [format_track(track, plays) for track, plays in top_tracks]
+    top_5_list = [
+        f"#{getattr(t, 'playlist_index', None) or index_map.get(t.id, '?')} - {t.artist} - {t.title} · {p} listeners peak"
+        for t, p in top_tracks
+    ]
 
     return {
         "session_start": session_start.strftime("%Y-%m-%d %H:%M:%S"),
