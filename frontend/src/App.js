@@ -55,13 +55,25 @@ function App() {
   const [favoritePosition, setFavoritePosition] = useState(0);
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [loadedSrc, setLoadedSrc] = useState(null); // Track what's actually loaded
-  
+  const [trayOpen, setTrayOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+    
   const audioRef = useRef(null);
   const syncIntervalRef = useRef(null);
   const isLoadingTrackRef = useRef(false);
   const abortControllerRef = useRef(null);
   const headUnitRef = useRef(null);
 
+  // Capture PWA install prompt
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+  
   // Fetch radio state - but DON'T automatically reload audio
   const fetchRadioState = useCallback(async () => {
     try {
@@ -629,7 +641,27 @@ function App() {
         </div>
         
         <div className="footer">
-</div>
+          <div className={`info-tray ${trayOpen ? 'open' : ''}`}>
+            <div className="tray-content">
+              <div className="tray-item" onClick={() => {
+                if (deferredPrompt) {
+                  deferredPrompt.prompt();
+                  deferredPrompt.userChoice.then(() => setDeferredPrompt(null));
+                } else {
+                  alert('Para añadir en iPhone: pulsa el botón Compartir → "Añadir a pantalla de inicio"');
+                }
+              }}>
+                📲 Agrega MadRock como app en tu teléfono
+              </div>
+              <div className="tray-item" onClick={() => window.open('https://instagram.com/madrock.radio', '_blank')}>
+                📸 Síguenos en Instagram @madrock.radio
+              </div>
+            </div>
+          </div>
+          <button className="tray-toggle" onClick={() => setTrayOpen(!trayOpen)}>
+            {trayOpen ? '▲' : '▼'}
+          </button>
+        </div>
       </div>
     </div>
   );
