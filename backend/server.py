@@ -63,7 +63,7 @@ user_favorites = {}
 # ==================== SCHEDULING ====================
 
 MADRID_TZ = pytz.timezone("Europe/Madrid")
-scheduled_track: Optional[dict] = None  # {"track": Track, "play_at": datetime, "origin": "staged"|"main"}
+scheduled_tracks: list = []  # list of {"track": Track, "play_at": datetime, "origin": "staged"|"main"}
 
 # ==================== TELEGRAM HELPERS ====================
 def get_telegram_audio_url(file_id: str) -> Optional[str]:
@@ -160,18 +160,29 @@ async def play_next_track():
         if new_url:
             radio_state.current_track.audio_url = new_url
     
-    # Check if a scheduled track is due
-    global scheduled_track
-    if scheduled_track:
-        now = datetime.now(MADRID_TZ)
-        if now >= scheduled_track["play_at"]:
-            logger.info(f"⏰ Playing scheduled track: {scheduled_track['track'].artist} - {scheduled_track['track'].title}")
-            radio_state.current_track = scheduled_track["track"]
-            # If it was a main playlist track, put it back; if staged, leave as-is
-            if scheduled_track["origin"] == "main":
-                if not any(t.id == scheduled_track["track"].id for t in radio_state.playlist):
-                    radio_state.playlist.insert(0, scheduled_track["track"])
-            scheduled_track = None
+    # Check if any scheduled tracks are due
+    global scheduled_tracks
+    now = datetime.now(MADRID_TZ)
+    still_pending = []
+    for entry in scheduled_tracks:
+        if now >= entry["play_at"]:
+            logger.info(f"⏰ Auto-queuing scheduled track: {entry['track'].artist} - {entry['track'].title}")
+            # Treat exactly like a manual /queue command
+            track = entry["track"]
+            insert_offset = 5
+            current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                                if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+            # Remove if already in playlist (main track case)
+            radio_state.playlist = [t for t in radio_state.playlist
+                                     if t.file_unique_id != track.get("file_unique_id")]
+            current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                                if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+            insert_idx = min(current_idx + insert_offset, len(radio_state.playlist))
+            radio_state.playlist.insert(insert_idx, Track(**track))
+            logger.info(f"🎯 Scheduled track queued at position ~{insert_offset}")
+        else:
+            still_pending.append(entry)
+    scheduled_tracks = still_pending
             
     radio_state.started_at = time.time()
     radio_state.position = 0
@@ -346,24 +357,20 @@ class ScheduleRequest(BaseModel):
 
 @api_router.post("/schedule/queue")
 async def queue_track(req: QueueRequest):
-    """Inject track into next 4-6 positions in playlist"""
+    """Inject track at position 5 in playlist"""
     if not radio_state.playlist:
         raise HTTPException(status_code=400, detail="Playlist is empty")
     
+    insert_offset = 5
+    
+    # Remove existing instance by file_unique_id to avoid duplicates
+    radio_state.playlist = [t for t in radio_state.playlist
+                             if t.file_unique_id != req.track.file_unique_id]
+    
+    # Calculate insert position after removal
     current_idx = next((i for i, t in enumerate(radio_state.playlist)
                         if radio_state.current_track and t.id == radio_state.current_track.id), 0)
-    
-    # Pick a random insert position within next 4-6 slots
-    insert_offset = random.randint(4, 6)
-    insert_idx = (current_idx + insert_offset) % len(radio_state.playlist)
-    
-    # Remove if already in playlist (main track case)
-    radio_state.playlist = [t for t in radio_state.playlist if t.id != req.track.id]
-    
-    # Recalculate insert index after possible removal
-    current_idx = next((i for i, t in enumerate(radio_state.playlist)
-                        if radio_state.current_track and t.id == radio_state.current_track.id), 0)
-    insert_idx = min((current_idx + insert_offset), len(radio_state.playlist))
+    insert_idx = min(current_idx + insert_offset, len(radio_state.playlist))
     
     radio_state.playlist.insert(insert_idx, req.track)
     
@@ -412,16 +419,17 @@ async def schedule_track(req: ScheduleRequest):
 @api_router.get("/schedule/status")
 async def get_schedule_status():
     """Check current schedule"""
-    if not scheduled_track:
-        return {"scheduled": None}
+    if not scheduled_tracks:
+        return {"scheduled": []}
     return {
-        "scheduled": {
-            "title": scheduled_track["track"].title,
-            "artist": scheduled_track["track"].artist,
-            "play_at": scheduled_track["play_at"].strftime("%d/%m at %H:%M"),
-            "origin": scheduled_track["origin"]
-        }
-    }
+        "scheduled": [
+            {
+                "title": s["track"].title,
+                "artist": s["track"].artist,
+                "play_at": s["play_at"].strftime("%d/%m at %H:%M"),
+                "origin": s["origin"]
+            } for s in scheduled_tracks
+        ]
     
 # ==================== STATS ====================
 STATS_KEY = os.getenv('STATS_KEY', 'madridrock')
@@ -437,11 +445,18 @@ async def get_radio_stats(key: str = ""):
     stats = get_stats(radio_state.playlist, radio_state.current_track, upcoming)
 
     # Add scheduled track info if any
-    stats["scheduled"] = {
-        "title": scheduled_track["track"].title,
-        "artist": scheduled_track["track"].artist,
-        "play_at": scheduled_track["play_at"].strftime("%d/%m at %H:%M")
-    } if scheduled_track else None
+    stats["current"] = (
+        f"#{radio_state.current_track.playlist_index or '?'} - "
+        f"{radio_state.current_track.artist} - {radio_state.current_track.title}"
+    ) if radio_state.current_track else None
+
+    stats["scheduled"] = [
+        {
+            "title": s["track"].title,
+            "artist": s["track"].artist,
+            "play_at": s["play_at"].strftime("%d/%m at %H:%M")
+        } for s in scheduled_tracks
+    ] or None
 
     return stats
 
