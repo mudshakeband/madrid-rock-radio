@@ -430,6 +430,7 @@ async def get_schedule_status():
                 "origin": s["origin"]
             } for s in scheduled_tracks
         ]
+    }
     
 # ==================== STATS ====================
 STATS_KEY = os.getenv('STATS_KEY', 'madridrock')
