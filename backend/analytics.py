@@ -91,11 +91,10 @@ def get_stats(playlist, current_track=None, upcoming_tracks=None):
     ]
 
     return {
-        "session_start": session_start.strftime("%Y-%m-%d %H:%M:%S"),
-        "uptime_hours": round(uptime.total_seconds() / 3600, 1),
         "current_listeners": len(active_listeners),
         "total_sessions": total_sessions,
-        "time_of_day_breakdown": dict(time_of_day_counts),
+        "session_start": session_start.strftime("%Y-%m-%d %H:%M:%S"),
+        "uptime_hours": round(uptime.total_seconds() / 3600, 1),
         "up_next": up_next_list,
         "already_played": already_played_list,
         "top_5": top_5_list

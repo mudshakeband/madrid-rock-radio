@@ -15,9 +15,10 @@ body {
 .radio-container {
   min-height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 20px;
+  padding-top: 160px;
   background-color: #0a0a0a;
   position: relative;
 }
@@ -58,29 +59,8 @@ body {
   background-repeat: no-repeat;
 }
 
-/* Head Unit */
-.head-unit {
-  width: 100%;
-  max-width: 650px;
-  background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 50%, #0f0f0f 100%);
-  border-radius: 12px;
-  padding: 24px;
-  border: 2px solid #333;
-  box-shadow: 
-    0 20px 60px rgba(0,0,0,0.9),
-    inset 0 1px 0 rgba(255,255,255,0.1);
-  position: relative;
-  z-index: 1;
-}
-
 /* Mobile responsive - scale everything proportionally */
 @media (max-width: 768px) {
-  .head-unit {
-    max-width: 95vw;
-    padding: 4vw;
-    border-radius: 2vw;
-  }
-  
   .lcd-screen {
     padding: 2.5vw 3vw;
   }
@@ -130,26 +110,13 @@ body {
   
   .button-group {
     gap: 2vw;
+    margin-top: 3vw;
   }
-}
-
-.head-unit::before,
-.head-unit::after {
-  content: '';
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background: radial-gradient(circle at 30% 30%, #666 0%, #222 100%);
-  border-radius: 50%;
-  top: 12px;
-}
-
-.head-unit::before {
-  left: 12px;
-}
-
-.head-unit::after {
-  right: 12px;
+  
+  .radio-container {
+    align-items: flex-start;
+    padding-top: 24vw;
+  }
 }
 
 /* LCD Screen */
@@ -516,7 +483,7 @@ body {
 /* Footer */
 .footer {
   text-align: center;
-  margin-top: 16px;
+  margin-top: 10px;
   font-size: 10px;
   color: #555;
   letter-spacing: 1px;
@@ -596,55 +563,106 @@ body {
   }
 }
 
+/* Head Unit Top Layer */
+.head-unit-top {
+  width: 100%;
+  max-width: 650px;
+  background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 50%, #0f0f0f 100%);
+  border-radius: 12px 12px 0 0;
+  padding: 24px 24px 2px 24px;
+  border: 2px solid #333;
+  border-bottom: none;
+  box-shadow: 
+    0 20px 60px rgba(0,0,0,0.9),
+    inset 0 1px 0 rgba(255,255,255,0.1);
+  position: relative;
+  z-index: 2;
+}
+
+.head-unit-top::before,
+.head-unit-top::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle at 30% 30%, #666 0%, #222 100%);
+  border-radius: 50%;
+  top: 12px;
+}
+
+.head-unit-top::before {
+  left: 12px;
+}
+
+.head-unit-top::after {
+  right: 12px;
+}
+
+/* Head Unit Bottom Layer */
+.head-unit-bottom {
+  width: 100%;
+  max-width: 650px;
+  background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%);
+  border-radius: 0 0 12px 12px;
+  border: 2px solid #333;
+  border-top: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+
 /* Info Tray */
 .footer {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  margin-top: 16px;
+  width: 100%;
 }
 
 .tray-toggle {
-  background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
-  border: 1px solid #333;
-  border-radius: 20px;
-  color: #888;
+  background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 50%, #1f1f1f 100%);
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ccc;
+  font-family: 'Courier New', monospace;
   font-size: 10px;
-  padding: 4px 24px;
+  padding: 3px 24px;
   cursor: pointer;
   letter-spacing: 2px;
-  width: 100%;
-  transition: all 0.2s;
+  transition: all 0.1s;
+  box-shadow: 
+    2px 2px 4px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.1);
+  display: block;
+  margin: 24px auto;
+  width: 90%;
 }
 
 .tray-toggle:hover {
-  color: #ffb000;
-  border-color: #555;
+  color: #fff;
+  background: linear-gradient(180deg, #444 0%, #333 50%, #252525 100%);
 }
 
 .info-tray {
-  width: 100%;
-  max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s ease, padding 0.3s ease;
+  max-height: 0;
+  transition: max-height 0.3s ease;
 }
 
 .info-tray.open {
   max-height: 200px;
-  padding-bottom: 8px;
 }
 
 .tray-content {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 0 8px 0;
+  padding: 2px 16px 30px 16px;
 }
 
 .tray-item {
   font-size: 12px;
-  color: #ffb000;
+  color: #ffffff;
   opacity: 0.7;
   cursor: pointer;
   letter-spacing: 1px;
@@ -657,4 +675,22 @@ body {
 .tray-item:hover {
   opacity: 1;
   background: rgba(255, 176, 0, 0.05);
+}
+
+.ios-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #ffb000;
+  opacity: 0.9;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.radio-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 650px;
+  position: relative;
 }

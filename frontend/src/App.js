@@ -57,15 +57,22 @@ function App() {
   const [loadedSrc, setLoadedSrc] = useState(null); // Track what's actually loaded
   const [trayOpen, setTrayOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-    
+  const [showIosHint, setShowIosHint] = useState(false);
+  
   const audioRef = useRef(null);
   const syncIntervalRef = useRef(null);
   const isLoadingTrackRef = useRef(false);
   const abortControllerRef = useRef(null);
   const headUnitRef = useRef(null);
 
-  // Capture PWA install prompt
+  // Register service worker + capture PWA install prompt
   useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(() => console.log('Service worker registered'))
+        .catch((err) => console.log('Service worker error:', err));
+    }
+
     const handler = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -466,6 +473,8 @@ function App() {
         </div>
       )}
       
+      <div className="radio-wrapper">
+
       {/* Audio Element - key prop prevents React from reusing */}
       <audio 
         ref={audioRef}
@@ -510,7 +519,7 @@ function App() {
       />
       
       {/* Head Unit */}
-      <div className="head-unit" ref={headUnitRef}>
+      <div className="head-unit-top" ref={headUnitRef}>
         
         {/* Main LCD Display */}
         <div className="lcd-screen">
@@ -639,8 +648,12 @@ function App() {
           </button>
           </div>
         </div>
-        
+      </div>
+      <div className="head-unit-bottom">
         <div className="footer">
+          <button className="tray-toggle" onClick={() => setTrayOpen(!trayOpen)}>
+            {trayOpen ? '▲' : '▼'}
+          </button>
           <div className={`info-tray ${trayOpen ? 'open' : ''}`}>
             <div className="tray-content">
               <div className="tray-item" onClick={() => {
@@ -648,19 +661,22 @@ function App() {
                   deferredPrompt.prompt();
                   deferredPrompt.userChoice.then(() => setDeferredPrompt(null));
                 } else {
-                  alert('Para añadir en iPhone: pulsa el botón Compartir → "Añadir a pantalla de inicio"');
+                  setShowIosHint(!showIosHint);
                 }
               }}>
                 📲 Agrega MadRock como app en tu teléfono
+                {showIosHint && (
+                  <div className="ios-hint">
+                    En iPhone: pulsa <strong>Compartir</strong> → <strong>Añadir a pantalla de inicio</strong>
+                  </div>
+                )}
               </div>
               <div className="tray-item" onClick={() => window.open('https://instagram.com/madrock.radio', '_blank')}>
                 📸 Síguenos en Instagram @madrock.radio
               </div>
             </div>
           </div>
-          <button className="tray-toggle" onClick={() => setTrayOpen(!trayOpen)}>
-            {trayOpen ? '▲' : '▼'}
-          </button>
+        </div>
         </div>
       </div>
     </div>
