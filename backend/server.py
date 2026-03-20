@@ -402,7 +402,7 @@ async def queue_track(req: QueueRequest):
         actual_track = req.track
 
     radio_state.playlist = [t for t in radio_state.playlist
-                             if t.file_unique_id != actual_track.file_unique_id]
+                         if t.file_unique_id != track.file_unique_id]
 
     current_idx = next((i for i, t in enumerate(radio_state.playlist)
                         if radio_state.current_track and t.id == radio_state.current_track.id), 0)
