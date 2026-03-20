@@ -347,84 +347,71 @@ async def get_share_data():
 
 class QueueRequest(BaseModel):
     track: Track
-    origin: str = "staged"  # "staged" or "main"
-
-class ScheduleRequest(BaseModel):
-    track: Track
-    time_str: str  # "HH:MM"
-    date_str: Optional[str] = None  # "DD/MM", optional
     origin: str = "staged"
+    time_str: Optional[str] = None  # "HH:MM" - if provided, queue at that time
+    date_str: Optional[str] = None  # "DD/MM" - optional date
 
 @api_router.post("/schedule/queue")
 async def queue_track(req: QueueRequest):
-    """Inject track at position 5 in playlist"""
+    """Queue a track immediately or at a scheduled time"""
+    global scheduled_tracks
+
     if not radio_state.playlist:
         raise HTTPException(status_code=400, detail="Playlist is empty")
-    
-    insert_offset = 5
-    
-    # Find the actual track in server's playlist by file_unique_id
+
+    # If time provided, schedule for later
+    if req.time_str:
+        now = datetime.now(MADRID_TZ)
+        try:
+            hour, minute = map(int, req.time_str.split(":"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
+
+        if req.date_str:
+            try:
+                day, month = map(int, req.date_str.split("/"))
+                play_at = MADRID_TZ.localize(datetime(now.year, month, day, hour, minute))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Use DD/MM")
+        else:
+            play_at = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if play_at <= now:
+                from datetime import timedelta
+                play_at += timedelta(days=1)
+
+        if play_at <= now:
+            raise HTTPException(status_code=400, detail="Scheduled time is in the past")
+
+        scheduled_tracks.append({
+            "track": req.track,
+            "play_at": play_at,
+            "origin": req.origin
+        })
+        logger.info(f"📅 Scheduled: {req.track.artist} - {req.track.title} for {play_at.strftime('%d/%m at %H:%M')} Madrid time")
+        logger.info(f"📋 scheduled_tracks now has {len(scheduled_tracks)} entries")
+        time_str = play_at.strftime("%d/%m at %H:%M")
+        return {"message": f"Scheduled '{req.track.title}' for {time_str} (Madrid time)"}
+
+    # Otherwise queue immediately at position 5
     actual_track = next(
         (t for t in radio_state.playlist if t.file_unique_id == req.track.file_unique_id),
         None
     )
-    
+
     if not actual_track:
-        # It's a staged track, use the data from the request
         actual_track = req.track
-    
-    # Remove existing instance to avoid duplicates
+
     radio_state.playlist = [t for t in radio_state.playlist
                              if t.file_unique_id != actual_track.file_unique_id]
-    
-    # Calculate insert position after removal
+
     current_idx = next((i for i, t in enumerate(radio_state.playlist)
                         if radio_state.current_track and t.id == radio_state.current_track.id), 0)
-    insert_idx = min(current_idx + insert_offset, len(radio_state.playlist))
-    
+    insert_idx = min(current_idx + 5, len(radio_state.playlist))
     radio_state.playlist.insert(insert_idx, actual_track)
-    
-    logger.info(f"🎯 Queued: {actual_track.artist} - {actual_track.title} at position ~{insert_offset}")
-    return {"message": f"Queued '{actual_track.title}' to play in approximately {insert_offset} songs"}
 
-@api_router.post("/schedule/timed")
-async def schedule_track(req: ScheduleRequest):
-    """Schedule a track to play at a specific time"""
-    global scheduled_track
-    
-    now = datetime.now(MADRID_TZ)
-    
-    try:
-        hour, minute = map(int, req.time_str.split(":"))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
-    
-    if req.date_str:
-        try:
-            day, month = map(int, req.date_str.split("/"))
-            year = now.year
-            play_at = MADRID_TZ.localize(datetime(year, month, day, hour, minute))
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use DD/MM")
-    else:
-        # Next occurrence of HH:MM
-        play_at = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if play_at <= now:
-            from datetime import timedelta
-            play_at += timedelta(days=1)
-    
-    if play_at <= now:
-        raise HTTPException(status_code=400, detail="Scheduled time is in the past")
-    
-    scheduled_track = {
-        "track": req.track,
-        "play_at": play_at,
-        "origin": req.origin
-    }
-    
-    time_str = play_at.strftime("%d/%m at %H:%M")
-    logger.info(f"📅 Scheduled: {req.track.artist} - {req.track.title} for {time_str} Madrid time")
-    return {"message": f"Scheduled '{req.track.title}' for {time_str} (Madrid time)"}
+    logger.info(f"🎯 Queued: {actual_track.artist} - {actual_track.title} at position 5")
+    return {"message": f"Queued '{actual_track.title}' to play in approximately 5 songs"}
+
 
 @api_router.get("/schedule/status")
 async def get_schedule_status():
