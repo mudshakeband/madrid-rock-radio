@@ -363,19 +363,29 @@ async def queue_track(req: QueueRequest):
     
     insert_offset = 5
     
-    # Remove existing instance by file_unique_id to avoid duplicates
+    # Find the actual track in server's playlist by file_unique_id
+    actual_track = next(
+        (t for t in radio_state.playlist if t.file_unique_id == req.track.get("file_unique_id") or t.file_unique_id == req.track.file_unique_id),
+        None
+    )
+    
+    if not actual_track:
+        # It's a staged track, use the data from the request
+        actual_track = Track(**req.track) if isinstance(req.track, dict) else req.track
+    
+    # Remove existing instance to avoid duplicates
     radio_state.playlist = [t for t in radio_state.playlist
-                             if t.file_unique_id != req.track.file_unique_id]
+                             if t.file_unique_id != actual_track.file_unique_id]
     
     # Calculate insert position after removal
     current_idx = next((i for i, t in enumerate(radio_state.playlist)
                         if radio_state.current_track and t.id == radio_state.current_track.id), 0)
     insert_idx = min(current_idx + insert_offset, len(radio_state.playlist))
     
-    radio_state.playlist.insert(insert_idx, req.track)
+    radio_state.playlist.insert(insert_idx, actual_track)
     
-    logger.info(f"🎯 Queued: {req.track.artist} - {req.track.title} at position ~{insert_offset}")
-    return {"message": f"Queued '{req.track.title}' to play in approximately {insert_offset} songs"}
+    logger.info(f"🎯 Queued: {actual_track.artist} - {actual_track.title} at position ~{insert_offset}")
+    return {"message": f"Queued '{actual_track.title}' to play in approximately {insert_offset} songs"}
 
 @api_router.post("/schedule/timed")
 async def schedule_track(req: ScheduleRequest):
