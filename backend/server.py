@@ -365,13 +365,13 @@ async def queue_track(req: QueueRequest):
     
     # Find the actual track in server's playlist by file_unique_id
     actual_track = next(
-        (t for t in radio_state.playlist if t.file_unique_id == req.track.get("file_unique_id") or t.file_unique_id == req.track.file_unique_id),
+        (t for t in radio_state.playlist if t.file_unique_id == req.track.file_unique_id),
         None
     )
     
     if not actual_track:
         # It's a staged track, use the data from the request
-        actual_track = Track(**req.track) if isinstance(req.track, dict) else req.track
+        actual_track = req.track
     
     # Remove existing instance to avoid duplicates
     radio_state.playlist = [t for t in radio_state.playlist
