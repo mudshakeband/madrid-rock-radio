@@ -168,8 +168,12 @@ async def play_next_track():
     for entry in scheduled_tracks:
         if now >= entry["play_at"]:
             logger.info(f"⏰ Auto-queuing scheduled track: {entry['track'].artist} - {entry['track'].title}")
-            # Treat exactly like a manual /queue command
-            track = entry["track"]
+            # Look up actual track in playlist to preserve playlist_index
+            actual_track = next(
+                (t for t in radio_state.playlist if t.file_unique_id == entry["track"].file_unique_id),
+                entry["track"]  # fallback for staged tracks
+            )
+            track = actual_track
             insert_offset = 5
             current_idx = next((i for i, t in enumerate(radio_state.playlist)
                                 if radio_state.current_track and t.id == radio_state.current_track.id), 0)
