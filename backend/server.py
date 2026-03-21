@@ -412,13 +412,16 @@ async def queue_track(req: QueueRequest):
     else:
         minutes_until = 0
 
-    # Always queue immediately at calculated position
-    insert_idx = _calculate_insert_position(minutes_until)
+    # Remove track first, then calculate position on clean playlist
     radio_state.playlist = [t for t in radio_state.playlist
                              if t.file_unique_id != actual_track.file_unique_id]
+    
     current_idx = next((i for i, t in enumerate(radio_state.playlist)
                         if radio_state.current_track and t.id == radio_state.current_track.id), 0)
-    insert_idx = min(current_idx + insert_idx, len(radio_state.playlist))
+    
+    # Always queue immediately at calculated position
+    insert_offset = _calculate_insert_position(minutes_until)
+    insert_idx = min(current_idx + insert_offset, len(radio_state.playlist))
     radio_state.playlist.insert(insert_idx, actual_track)
 
     if req.time_str:
