@@ -56,30 +56,12 @@ function App() {
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [loadedSrc, setLoadedSrc] = useState(null); // Track what's actually loaded
   const [trayOpen, setTrayOpen] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showIosHint, setShowIosHint] = useState(false);
-  
+    
   const audioRef = useRef(null);
   const syncIntervalRef = useRef(null);
   const isLoadingTrackRef = useRef(false);
   const abortControllerRef = useRef(null);
   const headUnitRef = useRef(null);
-
-  // Register service worker + capture PWA install prompt
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js')
-        .then(() => console.log('Service worker registered'))
-        .catch((err) => console.log('Service worker error:', err));
-    }
-
-    const handler = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
   
   // Fetch radio state - but DON'T automatically reload audio
   const fetchRadioState = useCallback(async () => {
@@ -656,19 +638,9 @@ function App() {
           </button>
           <div className={`info-tray ${trayOpen ? 'open' : ''}`}>
             <div className="tray-content">
-              <div className="tray-item" onClick={() => {
-                if (deferredPrompt) {
-                  deferredPrompt.prompt();
-                  deferredPrompt.userChoice.then(() => setDeferredPrompt(null));
-                } else {
-                  setShowIosHint(!showIosHint);
-                }
-              }}>
-                📲 Agrega MadRock como app en tu teléfono
-                {showIosHint && (
-                  <div className="ios-hint">
-                    En iPhone: pulsa <strong>Compartir</strong> → <strong>Añadir a pantalla de inicio</strong>
-                  </div>
+              <div className="tray-item">
+                📲 Agrega MadRock como app — Android: menú ··· → "Añadir a pantalla de inicio" · iPhone: Compartir → "Añadir a pantalla de inicio"
+              </div>
                 )}
               </div>
               <div className="tray-item" onClick={() => window.open('https://instagram.com/madrock.radio', '_blank')}>
