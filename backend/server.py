@@ -350,7 +350,7 @@ def _calculate_insert_position(minutes_until: float) -> int:
         accumulated += track.duration / 60
         if accumulated >= minutes_until:
             # Found the position — enforce minimum of 4
-            return max(i, 4)
+            return max(i + 1, 4)
     
     return 4
     
