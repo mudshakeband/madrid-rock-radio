@@ -353,9 +353,9 @@ async def get_share_data():
 # ==================== SCHEDULING ENDPOINTS ====================
 
 def _calculate_insert_position(minutes_until: float) -> int:
-    """Calculate playlist insert position so song plays after given minutes"""
+    """Calculate playlist insert position so song plays after given minutes, minimum position 4"""
     if not radio_state.current_track or not radio_state.playlist:
-        return 5
+        return 4
     
     # Get remaining time on current track
     current_position = get_current_position()
@@ -366,18 +366,17 @@ def _calculate_insert_position(minutes_until: float) -> int:
     current_idx = next((i for i, t in enumerate(radio_state.playlist)
                        if t.id == radio_state.current_track.id), 0)
     
-    position = 0
     playlist_len = len(radio_state.playlist)
     
     for i in range(1, playlist_len):
         next_idx = (current_idx + i) % playlist_len
         track = radio_state.playlist[next_idx]
         accumulated += track.duration / 60
-        position = i
         if accumulated >= minutes_until:
-            return position
-            
-    return position
+            # Found the position — enforce minimum of 4
+            return max(i, 4)
+    
+    return 4
     
 class QueueRequest(BaseModel):
     track: Track
@@ -460,7 +459,7 @@ async def queue_track(req: QueueRequest):
 
     current_idx = next((i for i, t in enumerate(radio_state.playlist)
                         if radio_state.current_track and t.id == radio_state.current_track.id), 0)
-    insert_idx = min(current_idx + 5, len(radio_state.playlist))
+    insert_idx = min(current_idx + 4, len(radio_state.playlist))
     radio_state.playlist.insert(insert_idx, actual_track)
 
     logger.info(f"🎯 Queued: {actual_track.artist} - {actual_track.title} at position 5")
