@@ -403,12 +403,11 @@ async def queue_track(req: QueueRequest):
         actual_track = req.track
 
     radio_state.playlist = [t for t in radio_state.playlist
-                         if t.file_unique_id != track.file_unique_id]
-
-    current_idx = next((i for i, t in enumerate(radio_state.playlist)
-                        if radio_state.current_track and t.id == radio_state.current_track.id), 0)
-    insert_idx = min(current_idx + 5, len(radio_state.playlist))
-    radio_state.playlist.insert(insert_idx, actual_track)
+                                     if t.file_unique_id != track.file_unique_id]
+            current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                                if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+            insert_idx = min(current_idx + insert_offset, len(radio_state.playlist))
+            radio_state.playlist.insert(insert_idx, track)
 
     logger.info(f"🎯 Queued: {actual_track.artist} - {actual_track.title} at position 5")
     return {"message": f"Queued '{actual_track.title}' to play in approximately 5 songs"}
