@@ -422,6 +422,7 @@ async def queue_track(req: QueueRequest):
     # Always queue immediately at calculated position
     insert_offset = _calculate_insert_position(minutes_until)
     insert_idx = min(current_idx + insert_offset, len(radio_state.playlist))
+    logger.info(f"🔍 current_idx: {current_idx}, insert_offset: {insert_offset}, insert_idx: {insert_idx}, playlist_len: {len(radio_state.playlist)}")
     radio_state.playlist.insert(insert_idx, actual_track)
 
     if req.time_str:
