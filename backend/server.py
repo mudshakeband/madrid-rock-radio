@@ -370,13 +370,13 @@ def _calculate_insert_position(minutes_until: float) -> int:
     playlist_len = len(radio_state.playlist)
     
     for i in range(1, playlist_len):
-        if accumulated >= minutes_until:
-            return position
         next_idx = (current_idx + i) % playlist_len
         track = radio_state.playlist[next_idx]
         accumulated += track.duration / 60
         position = i
-    
+        if accumulated >= minutes_until:
+            return position
+            
     return position
     
 class QueueRequest(BaseModel):

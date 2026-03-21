@@ -641,8 +641,6 @@ function App() {
               <div className="tray-item">
                 📲 Agrega MadRock como app — Android: menú ··· → "Añadir a pantalla de inicio" · iPhone: Compartir → "Añadir a pantalla de inicio"
               </div>
-                )}
-              </div>
               <div className="tray-item" onClick={() => window.open('https://instagram.com/madrock.radio', '_blank')}>
                 📸 Síguenos en Instagram @madrock.radio
               </div>
