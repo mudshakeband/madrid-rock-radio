@@ -174,7 +174,9 @@ async def play_next_track():
                 entry["track"]  # fallback for staged tracks
             )
             track = actual_track
-            insert_offset = 5
+            # Calculate position based on remaining time until scheduled play_at
+            minutes_until = (entry["play_at"] - datetime.now(MADRID_TZ)).total_seconds() / 60
+            insert_offset = _calculate_insert_position(minutes_until)
             current_idx = next((i for i, t in enumerate(radio_state.playlist)
                                 if radio_state.current_track and t.id == radio_state.current_track.id), 0)
             # Remove if already in playlist (main track case)
@@ -350,6 +352,33 @@ async def get_share_data():
 
 # ==================== SCHEDULING ENDPOINTS ====================
 
+def _calculate_insert_position(minutes_until: float) -> int:
+    """Calculate playlist insert position so song plays after given minutes"""
+    if not radio_state.current_track or not radio_state.playlist:
+        return 5
+    
+    # Get remaining time on current track
+    current_position = get_current_position()
+    current_remaining = max(0, radio_state.current_track.duration - current_position)
+    
+    accumulated = current_remaining / 60  # convert to minutes
+    
+    current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                       if t.id == radio_state.current_track.id), 0)
+    
+    position = 0
+    playlist_len = len(radio_state.playlist)
+    
+    for i in range(1, playlist_len):
+        if accumulated >= minutes_until:
+            return position
+        next_idx = (current_idx + i) % playlist_len
+        track = radio_state.playlist[next_idx]
+        accumulated += track.duration / 60
+        position = i
+    
+    return position
+    
 class QueueRequest(BaseModel):
     track: Track
     origin: str = "staged"
@@ -387,15 +416,35 @@ async def queue_track(req: QueueRequest):
         if play_at <= now:
             raise HTTPException(status_code=400, detail="Scheduled time is in the past")
 
-        scheduled_tracks.append({
-            "track": req.track,
-            "play_at": play_at,
-            "origin": req.origin
-        })
-        logger.info(f"📅 Scheduled: {req.track.artist} - {req.track.title} for {play_at.strftime('%d/%m at %H:%M')} Madrid time")
-        logger.info(f"📋 scheduled_tracks now has {len(scheduled_tracks)} entries")
-        time_str = play_at.strftime("%d/%m at %H:%M")
-        return {"message": f"Scheduled '{req.track.title}' for {time_str} (Madrid time)"}
+        # Calculate minutes until target time
+        minutes_until = (play_at - datetime.now(MADRID_TZ)).total_seconds() / 60
+        logger.info(f"⏱ minutes_until: {minutes_until:.1f}, play_at: {play_at}, now: {datetime.now(MADRID_TZ)}")
+        if minutes_until <= 20:
+            # Close enough — queue immediately at calculated position
+            insert_idx = _calculate_insert_position(minutes_until)
+            actual_track = next(
+                (t for t in radio_state.playlist if t.file_unique_id == req.track.file_unique_id),
+                req.track
+            )
+            radio_state.playlist = [t for t in radio_state.playlist
+                                     if t.file_unique_id != actual_track.file_unique_id]
+            current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                                if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+            insert_idx = min(current_idx + insert_idx, len(radio_state.playlist))
+            radio_state.playlist.insert(insert_idx, actual_track)
+            logger.info(f"🎯 Queued at calculated position for ~{play_at.strftime('%H:%M')}")
+            return {"message": f"Queued '{req.track.title}' to play around {play_at.strftime('%H:%M')}"}
+        else:
+            # Store for later with target time
+            scheduled_tracks.append({
+                "track": req.track,
+                "play_at": play_at,
+                "origin": req.origin
+            })
+            logger.info(f"📅 Scheduled: {req.track.artist} - {req.track.title} for {play_at.strftime('%d/%m at %H:%M')} Madrid time")
+            logger.info(f"📋 scheduled_tracks now has {len(scheduled_tracks)} entries")
+            time_str = play_at.strftime("%d/%m at %H:%M")
+            return {"message": f"Scheduled '{req.track.title}' for {time_str} (Madrid time)"}
 
     # Otherwise queue immediately at position 5
     actual_track = next(
