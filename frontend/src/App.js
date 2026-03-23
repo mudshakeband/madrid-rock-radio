@@ -308,6 +308,7 @@ function App() {
       setLoadedSrc(null);
       setCurrentTrackId(null);
       setPlayingFavorite(false);
+      setCurrentTime(0);
     }
   };
 
@@ -604,13 +605,13 @@ function App() {
           {/* Favorites feature temporarily hidden - awaiting backend development */}
           
           <button 
-  className="control-btn primary"
+  className={`control-btn primary ${isTunedIn ? 'active' : ''}`}
   onClick={() => {
     if (currentTrack?.band_link) {
       window.open(currentTrack.band_link, '_blank');
     }
   }}
-  disabled={!currentTrack?.band_link}
+  disabled={!currentTrack?.band_link || !isTunedIn}
   title="Band info"
 >
   <ExternalLink size={20} />
@@ -618,9 +619,9 @@ function App() {
 </button>
           
           <button 
-            className="control-btn icon-only"
+            className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''}`}
             onClick={shareTrack}
-            disabled={!currentTrack}
+            disabled={!currentTrack || !isTunedIn}
             title="Share"
           >
             <Share2 size={22} />

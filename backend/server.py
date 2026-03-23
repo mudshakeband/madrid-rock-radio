@@ -436,23 +436,21 @@ async def queue_track(req: QueueRequest):
         logger.info(f"📅 Tracked: {actual_track.artist} - {actual_track.title} for {play_at.strftime('%d/%m at %H:%M')}")
 
     else:
-        # No time given — queue at position 4
-        scheduled_tracks = [s for s in scheduled_tracks
-                           if s["track"].file_unique_id != actual_track.file_unique_id]
-        scheduled_tracks.append({
-            "track": actual_track,
-            "play_at": datetime.now(MADRID_TZ),
-            "origin": req.origin
-        })
+        # No time given — insert directly at position 4
+        radio_state.playlist = [t for t in radio_state.playlist
+                                if t.file_unique_id != actual_track.file_unique_id]
+        current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                           if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+        insert_idx = min(current_idx + 4, len(radio_state.playlist))
+        radio_state.playlist.insert(insert_idx, actual_track)
+        logger.info(f"🎯 Queued: {actual_track.artist} - {actual_track.title} at position 4")
+        return {"message": f"Queued '{actual_track.title}' to play in approximately 4 songs"}
 
     # Recalculate all scheduled songs from scratch
     _insert_all_scheduled()
 
-    if req.time_str:
-        logger.info(f"📅 All scheduled songs recalculated")
-        return {"message": f"Queued '{actual_track.title}' to play around {play_at.strftime('%H:%M')}"}
-    else:
-        return {"message": f"Queued '{actual_track.title}' to play in approximately 4 songs"}
+    logger.info(f"📅 All scheduled songs recalculated")
+    return {"message": f"Queued '{actual_track.title}' to play around {play_at.strftime('%H:%M')}"}
 
 @api_router.get("/schedule/status")
 async def get_schedule_status():
