@@ -516,7 +516,7 @@ function App() {
           </div>
           
           {isLoading ? (
-            <div className="lcd-text loading">TUNING...</div>
+            <div className="lcd-text loading">SINTONIZANDO...</div>
           ) : error ? (
             <div className="lcd-text error">{error}</div>
           ) : currentTrack ? (
@@ -544,9 +544,9 @@ function App() {
                 <div className="progress-fill" style={{ width: `${progressPercent}%` }}></div>
               </div>
             </div>
-          ) : (
+          ) : isTunedIn ? (
             <div className="lcd-text">NO SIGNAL</div>
-          )}
+          ) : null}
         </div>
         
         {!playingFavorite && radioState && radioState.up_next && radioState.up_next.length > 0 ? (

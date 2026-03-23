@@ -136,6 +136,7 @@ body {
     inset 3px 3px 8px rgba(0,0,0,0.9),
     0 1px 0 rgba(255,255,255,0.1);
   position: relative;
+  min-height: 160px;
 }
 
 .lcd-screen::after {
@@ -173,6 +174,12 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+  transition: all 0.3s ease;
+}
+
+.station-badge.off {
+  background: linear-gradient(135deg, #333 0%, #222 100%);
+  color: #555;
 }
 
 .status-indicators {
@@ -313,7 +320,7 @@ body {
 }
 
 .queue-text.scrolling {
-  animation: marquee-loop 30s linear infinite;
+  animation: marquee-loop 40s linear infinite;
   animation-delay: 1s; /* Start scrolling after 1s delay */
 }
 
