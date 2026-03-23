@@ -488,10 +488,15 @@ async def get_radio_stats(key: str = ""):
     # Build upcoming list from current position
     upcoming = get_upcoming_tracks(20)
 
-    stats = get_stats(radio_state.playlist, radio_state.current_track, upcoming)
+    current_label = (
+        f"#{radio_state.current_track.playlist_index or '?'} - "
+        f"{radio_state.current_track.artist} - {radio_state.current_track.title}"
+    ) if radio_state.current_track else None
+
+    stats = get_stats(radio_state.playlist, radio_state.current_track, upcoming, current_label)
 
     # Add scheduled track info if any
-    stats["current"] = (
+    stats["scheduled"] = (
         f"#{radio_state.current_track.playlist_index or '?'} - "
         f"{radio_state.current_track.artist} - {radio_state.current_track.title}"
     ) if radio_state.current_track else None

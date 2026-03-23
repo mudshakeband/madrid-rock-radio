@@ -41,7 +41,7 @@ def record_track_play(track_id: str):
         len(active_listeners)
     )
 
-def get_stats(playlist, current_track=None, upcoming_tracks=None):
+def get_stats(playlist, current_track=None, upcoming_tracks=None, current_label=None):
     cleanup_inactive()
     uptime = datetime.now() - session_start
 
@@ -91,6 +91,7 @@ def get_stats(playlist, current_track=None, upcoming_tracks=None):
     ]
 
     return {
+        "current": current_label,
         "current_listeners": len(active_listeners),
         "total_sessions": total_sessions,
         "session_start": session_start.strftime("%Y-%m-%d %H:%M:%S"),
