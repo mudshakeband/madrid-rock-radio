@@ -18,7 +18,7 @@ body {
   align-items: flex-start;
   justify-content: center;
   padding: 20px;
-  padding-top: 160px;
+  padding-top: 140px;
   background-color: #0a0a0a;
   position: relative;
 }
@@ -117,6 +117,12 @@ body {
     align-items: flex-start;
     padding-top: 40vw;
   }
+  
+  @media (max-width: 768px) and (hover: hover) {
+  .radio-container {
+    padding-top: 160px;
+  }
+}
 }
 
 /* LCD Screen */
@@ -227,10 +233,20 @@ body {
   white-space: nowrap;
 }
 
+.track-title-wrapper {
+  overflow: hidden;
+  width: 100%;
+}
+
 .track-title.scrolling {
   display: inline-block;
-  animation: marquee-continuous 15s linear infinite;
-  padding-left: 100%;
+  white-space: nowrap;
+  animation: marquee-title 18s linear infinite;
+  animation-delay: 0.5s;
+}
+
+.title-copy {
+  padding-right: 1em;
 }
 
 .track-artist {
@@ -530,6 +546,11 @@ body {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); 
   }
+}
+
+@keyframes marquee-title {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 @keyframes slideDown {

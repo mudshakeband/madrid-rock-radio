@@ -524,9 +524,16 @@ function App() {
             <div className="lcd-text error">{error}</div>
           ) : currentTrack ? (
             <div className="track-display">
-              <div className={`track-title ${currentTrack.title.length > 40 ? 'scrolling' : ''}`}>
-                {currentTrack.title}
-              </div>
+              <div className="track-title-wrapper">
+  {currentTrack.title.length > 16 ? (
+    <div className="track-title scrolling">
+      <span className="title-copy">·{'\u00A0'}{'\u00A0'}{currentTrack.title}</span>
+      <span className="title-copy">·{'\u00A0'}{'\u00A0'}{currentTrack.title}</span>
+    </div>
+  ) : (
+    <div className="track-title">{currentTrack.title}</div>
+  )}
+</div>
               <div className="track-artist">
                 {currentTrack.artist}
               </div>
