@@ -334,32 +334,53 @@ async def get_share_data():
 
 # ==================== SCHEDULING ENDPOINTS ====================
 
-def _calculate_insert_position(minutes_until: float) -> int:
-    """Calculate playlist insert position so song plays after given minutes, minimum position 4"""
-    if not radio_state.current_track or not radio_state.playlist:
-        return 4
-    
-    # Get remaining time on current track
-    current_position = get_current_position()
-    current_remaining = max(0, radio_state.current_track.duration - current_position)
-    
-    accumulated = current_remaining / 60  # convert to minutes
-    
+def _insert_all_scheduled():
+    """Remove all scheduled songs from playlist and reinsert them in chronological order"""
+    if not scheduled_tracks or not radio_state.playlist:
+        return
+
+    # Remove all scheduled songs from playlist
+    scheduled_ids = {s["track"].file_unique_id for s in scheduled_tracks}
+    radio_state.playlist[:] = [t for t in radio_state.playlist 
+                                if t.file_unique_id not in scheduled_ids]
+
+    # Sort scheduled songs by target time
+    sorted_scheduled = sorted(scheduled_tracks, key=lambda s: s["play_at"])
+
+    # Find current track index
     current_idx = next((i for i, t in enumerate(radio_state.playlist)
-                       if t.id == radio_state.current_track.id), 0)
-    
-    playlist_len = len(radio_state.playlist)
-    
-    for i in range(1, playlist_len):
-        next_idx = (current_idx + i) % playlist_len
-        track = radio_state.playlist[next_idx]
-        accumulated += track.duration / 60
-        if accumulated >= minutes_until:
-            # Found the position — enforce minimum of 4
-            return max(i + 1, 4)
-    
-    return 4
-    
+                       if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+
+    now = datetime.now(MADRID_TZ)
+
+    for entry in sorted_scheduled:
+        minutes_until = (entry["play_at"] - now).total_seconds() / 60
+        if minutes_until <= 0:
+            continue
+
+        # Walk forward from current position accumulating durations
+        accumulated = (radio_state.current_track.duration - (time.time() - radio_state.started_at)) / 60
+        playlist_len = len(radio_state.playlist)
+        insert_offset = max(4, playlist_len)  # fallback to end if nothing fits
+
+        for i in range(1, playlist_len):
+            next_idx = (current_idx + i) % playlist_len
+            track = radio_state.playlist[next_idx]
+            accumulated += track.duration / 60
+            if accumulated >= minutes_until:
+                insert_offset = max(i + 1, 4)
+                break
+
+        insert_idx = min(current_idx + insert_offset, len(radio_state.playlist))
+        radio_state.playlist.insert(insert_idx, entry["track"])
+
+        # Update current_idx after each insertion
+        current_idx = next((i for i, t in enumerate(radio_state.playlist)
+                           if radio_state.current_track and t.id == radio_state.current_track.id), 0)
+
+        logger.info(f"🎯 Placed '{entry['track'].title}' at position {insert_offset} for {entry['play_at'].strftime('%H:%M')}")
+
+
 class QueueRequest(BaseModel):
     track: Track
     origin: str = "staged"
@@ -368,7 +389,7 @@ class QueueRequest(BaseModel):
 
 @api_router.post("/schedule/queue")
 async def queue_track(req: QueueRequest):
-    """Queue a track immediately at calculated position, always save to scheduled_tracks for tracking"""
+    """Queue a track at calculated position, recalculate all scheduled songs each time"""
     global scheduled_tracks
 
     if not radio_state.playlist:
@@ -381,7 +402,6 @@ async def queue_track(req: QueueRequest):
     )
 
     if req.time_str:
-        # Parse target time
         now = datetime.now(MADRID_TZ)
         try:
             hour, minute = map(int, req.time_str.split(":"))
@@ -403,11 +423,9 @@ async def queue_track(req: QueueRequest):
         if play_at <= now:
             raise HTTPException(status_code=400, detail="Scheduled time is in the past")
 
-        minutes_until = (play_at - now).total_seconds() / 60
-
-        # Save to scheduled_tracks for display and restart recovery
-        # Remove any existing schedule for this track first
-        scheduled_tracks = [s for s in scheduled_tracks if s["track"].file_unique_id != actual_track.file_unique_id]
+        # Update or add to scheduled_tracks
+        scheduled_tracks = [s for s in scheduled_tracks
+                           if s["track"].file_unique_id != actual_track.file_unique_id]
         scheduled_tracks.append({
             "track": actual_track,
             "play_at": play_at,
@@ -416,26 +434,22 @@ async def queue_track(req: QueueRequest):
         logger.info(f"📅 Tracked: {actual_track.artist} - {actual_track.title} for {play_at.strftime('%d/%m at %H:%M')}")
 
     else:
-        minutes_until = 0
+        # No time given — queue at position 4
+        scheduled_tracks = [s for s in scheduled_tracks
+                           if s["track"].file_unique_id != actual_track.file_unique_id]
+        scheduled_tracks.append({
+            "track": actual_track,
+            "play_at": datetime.now(MADRID_TZ),
+            "origin": req.origin
+        })
 
-    # Remove track first, then calculate position on clean playlist
-    radio_state.playlist = [t for t in radio_state.playlist
-                             if t.file_unique_id != actual_track.file_unique_id]
-    
-    current_idx = next((i for i, t in enumerate(radio_state.playlist)
-                        if radio_state.current_track and t.id == radio_state.current_track.id), 0)
-    
-    # Always queue immediately at calculated position
-    insert_offset = _calculate_insert_position(minutes_until)
-    insert_idx = (current_idx + insert_offset) % len(radio_state.playlist)
-    logger.info(f"🔍 current_idx: {current_idx}, insert_offset: {insert_offset}, insert_idx: {insert_idx}, playlist_len: {len(radio_state.playlist)}")
-    radio_state.playlist.insert(insert_idx, actual_track)
+    # Recalculate all scheduled songs from scratch
+    _insert_all_scheduled()
 
     if req.time_str:
-        logger.info(f"🎯 Queued at position ~{insert_idx - current_idx} to play around {play_at.strftime('%H:%M')}")
+        logger.info(f"📅 All scheduled songs recalculated")
         return {"message": f"Queued '{actual_track.title}' to play around {play_at.strftime('%H:%M')}"}
     else:
-        logger.info(f"🎯 Queued: {actual_track.artist} - {actual_track.title} at position 4")
         return {"message": f"Queued '{actual_track.title}' to play in approximately 4 songs"}
 
 @api_router.get("/schedule/status")
