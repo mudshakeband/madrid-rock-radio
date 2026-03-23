@@ -48,6 +48,8 @@ function App() {
   const [volume, setVolume] = useState(7);
   const [isTunedIn, setIsTunedIn] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const volumeRef = useRef(7);
+  const isMutedRef = useRef(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState(null);
   const [favorite, setFavorite] = useState(null);
@@ -136,7 +138,7 @@ function App() {
         
         // Set position
         audioRef.current.currentTime = position || 0;
-        audioRef.current.volume = isMuted ? 0 : volume / 10;
+        audioRef.current.volume = isMutedRef.current ? 0 : volumeRef.current / 10;
         
         if (trackId) {
           setCurrentTrackId(trackId);
@@ -179,6 +181,9 @@ function App() {
           }
         });
 
+        // Re-apply volume after load (load() can reset it in some browsers)
+        audioRef.current.volume = isMutedRef.current ? 0 : volumeRef.current / 10;
+
         // Now play
         await audioRef.current.play();
         console.log('▶️  Playing');
@@ -203,7 +208,7 @@ function App() {
       isLoadingTrackRef.current = false;
       abortControllerRef.current = null;
     }
-  }, [volume, isMuted, isTunedIn, playingFavorite, loadedSrc]);
+  }, [isTunedIn, playingFavorite, loadedSrc]);
 
   // Fetch favorite
   const fetchFavorite = useCallback(async () => {
@@ -277,15 +282,13 @@ function App() {
     if (!audioRef.current) return;
     
     if (!isTunedIn) {
-      // Tune in
+      // Power on — tune in to live position
       try {
         const response = await axios.get(`${API}/radio/stream`);
         if (response.data.audio_url && radioState?.current_track) {
           setIsTunedIn(true);
-          setIsMuted(false);
           setPlayingFavorite(false);
           
-          // Load the track
           await loadTrack(
             response.data.audio_url,
             response.data.position || 0,
@@ -298,21 +301,13 @@ function App() {
         setIsTunedIn(false);
       }
     } else {
-      // Toggle mute
-      if (isMuted) {
-        if (audioRef.current) {
-          audioRef.current.volume = volume / 10;
-          if (audioRef.current.paused) {
-            audioRef.current.play().catch(console.error);
-          }
-        }
-        setIsMuted(false);
-      } else {
-        if (audioRef.current) {
-          audioRef.current.volume = 0;
-        }
-        setIsMuted(true);
-      }
+      // Power off — stop audio completely
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      setIsTunedIn(false);
+      setLoadedSrc(null);
+      setCurrentTrackId(null);
+      setPlayingFavorite(false);
     }
   };
 
@@ -333,7 +328,8 @@ function App() {
   // Volume change
   const handleVolumeChange = (newVolume) => {
     setVolume(newVolume);
-    if (audioRef.current && !isMuted) {
+    volumeRef.current = newVolume;
+    if (audioRef.current && !isMutedRef.current) {
       audioRef.current.volume = newVolume / 10;
     }
   };
@@ -598,17 +594,11 @@ function App() {
           <div className="button-group">
           
           <button 
-            className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''} ${isMuted ? 'muted' : ''}`}
+            className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''}`}
             onClick={toggleTuneIn}
-            title={!isTunedIn ? "Tune in" : isMuted ? "Unmute" : "Mute"}
+            title={isTunedIn ? "Power off" : "Power on"}
           >
-            {!isTunedIn ? (
-              <Power size={24} />
-            ) : isMuted ? (
-              <VolumeX size={24} />
-            ) : (
-              <Volume2 size={24} />
-            )}
+            <Power size={24} />
           </button>
           
           {/* Favorites feature temporarily hidden - awaiting backend development */}

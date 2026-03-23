@@ -457,6 +457,18 @@ body {
   color: #888;
 }
 
+.control-btn.primary.active {
+  color: #ffb000;
+  box-shadow: 
+    2px 2px 4px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.1),
+    0 0 8px rgba(255, 176, 0, 0.4);
+}
+
+.control-btn.primary:not(.active) {
+  color: #ccc;
+}
+
 .control-btn.secondary {
   background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
 }
