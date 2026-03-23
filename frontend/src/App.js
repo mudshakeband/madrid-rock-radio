@@ -553,7 +553,7 @@ function App() {
                 <span key={`copy-${copyIndex}`}>
                   {radioState.up_next.map((t, i) => (
                     <span key={`${copyIndex}-${i}`} className="scroll-item">
-                      {i === 0 ? <strong>{'•\u00A0\u00A0\u00A0'}</strong> : '»\u00A0\u00A0\u00A0\u00A0'}
+                      {i === 0 ? '\u00A0'.repeat(20) + '●' + '\u00A0\u00A0' : '\u00A0\u00A0\u00A0>>\u00A0\u00A0\u00A0'}
                       {`${t.title} - ${t.artist}`}
                     </span>
                   ))}
@@ -639,7 +639,9 @@ function App() {
           <div className={`info-tray ${trayOpen ? 'open' : ''}`}>
             <div className="tray-content">
               <div className="tray-item">
-                📲 Agrega MadRock como app — Android: menú ··· → "Añadir a pantalla de inicio" · iPhone: Compartir → "Añadir a pantalla de inicio"
+                📲 Agrega MadRock como app
+                <div className="tray-sub">• Android: ☰ » "Añadir a pantalla de inicio"</div>
+                <div className="tray-sub">• iPhone: Compartir » "Añadir a pantalla de inicio"</div>
               </div>
               <div className="tray-item" onClick={() => window.open('https://instagram.com/madrock.radio', '_blank')}>
                 📸 Síguenos en Instagram @madrock.radio

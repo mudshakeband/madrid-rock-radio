@@ -115,7 +115,7 @@ body {
   
   .radio-container {
     align-items: flex-start;
-    padding-top: 24vw;
+    padding-top: 40vw;
   }
 }
 
@@ -303,7 +303,7 @@ body {
 
 .scroll-item {
   display: inline-block;
-  padding-right: 2.5em; /* Space between song titles */
+  padding-right: 0em; /* Space between song titles */
 }
 
 .scroll-item:last-child {
@@ -693,4 +693,11 @@ body {
   width: 100%;
   max-width: 650px;
   position: relative;
+}
+
+.tray-sub {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 4px;
+  letter-spacing: 0.5px;
 }
