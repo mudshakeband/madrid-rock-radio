@@ -553,7 +553,7 @@ function App() {
                 <span key={`copy-${copyIndex}`}>
                   {radioState.up_next.map((t, i) => (
                     <span key={`${copyIndex}-${i}`} className="scroll-item">
-                      {i === 0 && copyIndex === 0 ? '' : ' • '}
+                      {i === 0 ? <strong>{'•\u00A0\u00A0\u00A0'}</strong> : '»\u00A0\u00A0\u00A0\u00A0'}
                       {`${t.title} - ${t.artist}`}
                     </span>
                   ))}
