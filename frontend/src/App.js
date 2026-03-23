@@ -522,7 +522,7 @@ function App() {
           ) : currentTrack ? (
             <div className="track-display">
               <div className="track-title-wrapper">
-  {currentTrack.title.length > 16 ? (
+  {currentTrack.title.length > 14 ? (
     <div className="track-title scrolling">
       <span className="title-copy">·{'\u00A0'}{'\u00A0'}{currentTrack.title}</span>
       <span className="title-copy">·{'\u00A0'}{'\u00A0'}{currentTrack.title}</span>
