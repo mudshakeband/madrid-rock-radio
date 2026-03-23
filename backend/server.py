@@ -142,6 +142,7 @@ async def play_next_track():
         return
     
     # Move current to history
+    prev_track = radio_state.current_track
     if radio_state.current_track:
         radio_state.history.insert(0, radio_state.current_track)
         radio_state.history = radio_state.history[:5]
@@ -161,17 +162,18 @@ async def play_next_track():
         if new_url:
             radio_state.current_track.audio_url = new_url
     
-    # Remove from scheduled_tracks if this song was scheduled
+     # Remove from scheduled_tracks if this song was scheduled
     global scheduled_tracks
-    if radio_state.current_track:
+    if prev_track:
         for s in scheduled_tracks:
-            if s["track"].file_unique_id == radio_state.current_track.file_unique_id:
+            if s["track"].file_unique_id == prev_track.file_unique_id:
                 if s["origin"] == "staged":
-                    # Remove staged song from playlist after playing
+                    # Remove staged song from rotation after playing
                     radio_state.playlist = [t for t in radio_state.playlist
-                                           if t.file_unique_id != radio_state.current_track.file_unique_id]
+                                           if t.file_unique_id != prev_track.file_unique_id]
+                    logger.info(f"🎬 Staged song removed from rotation: {prev_track.artist} - {prev_track.title}")
         scheduled_tracks = [s for s in scheduled_tracks 
-                           if s["track"].file_unique_id != radio_state.current_track.file_unique_id]
+                           if s["track"].file_unique_id != prev_track.file_unique_id]
             
     radio_state.started_at = time.time()
     radio_state.position = 0
