@@ -164,6 +164,12 @@ async def play_next_track():
     # Remove from scheduled_tracks if this song was scheduled
     global scheduled_tracks
     if radio_state.current_track:
+        for s in scheduled_tracks:
+            if s["track"].file_unique_id == radio_state.current_track.file_unique_id:
+                if s["origin"] == "staged":
+                    # Remove staged song from playlist after playing
+                    radio_state.playlist = [t for t in radio_state.playlist
+                                           if t.file_unique_id != radio_state.current_track.file_unique_id]
         scheduled_tracks = [s for s in scheduled_tracks 
                            if s["track"].file_unique_id != radio_state.current_track.file_unique_id]
             
@@ -447,6 +453,15 @@ async def get_schedule_status():
             } for s in scheduled_tracks
         ]
     }
+    
+@api_router.post("/radio/skip")
+async def skip_track():
+    """Skip to next track — dev use only"""
+    prev = f"{radio_state.current_track.artist} - {radio_state.current_track.title}" if radio_state.current_track else "none"
+    await play_next_track()
+    next_up = f"{radio_state.current_track.artist} - {radio_state.current_track.title}" if radio_state.current_track else "none"
+    logger.info(f"⏭ Skipped: {prev} → {next_up}")
+    return {"message": f"Skipped to: {next_up}"}
     
 # ==================== STATS ====================
 STATS_KEY = os.getenv('STATS_KEY', 'madridrock')
