@@ -133,7 +133,7 @@
       "artist": "TAFF",
       "duration": 133,
       "source": "telegram",
-	  "band_link": "https://beacons.ai/taffband"
+      "band_link": "https://beacons.ai/taffband"
     },
     {
       "file_id": "CQACAgEAAxkBAAIBX2m7FNyjWXmrPcYro2R9U0fJHaI_AAJ4BQACLqjYRW5237kcQ1wBOgQ",
@@ -142,7 +142,34 @@
       "artist": "AmyJo Doh & The Spangles",
       "duration": 170,
       "source": "telegram",
-	  "band_link": "https://linktr.ee/AMYJODOHANDTHESPANGLES"
+      "band_link": "https://linktr.ee/AMYJODOHANDTHESPANGLES"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAICtGnDMPnlTyhi0EqxeDQa3czEznvGAAL-BQACYLEgRqXEpx5HEIJXOgQ",
+      "file_unique_id": "AgAD_gUAAmCxIEY",
+      "title": "Norte",
+      "artist": "Late Capital",
+      "duration": 215,
+      "source": "telegram",
+	  "band_link": "https://www.instagram.com/late_capital/"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAICtWnDMPkxtiOt0ZRjVhESCNcoCsLAAAL8BQACYLEgRl_5wS9Td5DuOgQ",
+      "file_unique_id": "AgAD_AUAAmCxIEY",
+      "title": "Quiero Matar a Mr. Wonderful",
+      "artist": "Ruta 57",
+      "duration": 195,
+      "source": "telegram",
+	  "band_link": "https://open.spotify.com/artist/4DGpnzwhMxSvbLetiUNuxj"
+    },
+    {
+      "file_id": "CQACAgEAAxkBAAICtmnDMPnddFlyRL2mJceBqWNzrXTvAAL9BQACYLEgRrAk90aWuYthOgQ",
+      "file_unique_id": "AgAD_QUAAmCxIEY",
+      "title": "Libre",
+      "artist": "La Revolución Del Mono",
+      "duration": 265,
+      "source": "telegram",
+	  "band_link": "https://open.spotify.com/artist/7Ikd2EqctpJKAndvfAxaUq"
     }
   ],
   "staged": [
