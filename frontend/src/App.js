@@ -188,6 +188,15 @@ function App() {
         await audioRef.current.play();
         console.log('▶️  Playing');
         setError(null);
+
+        // Update notification tray metadata
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: radioState?.current_track?.title || 'Madrid Rock Radio',
+            artist: radioState?.current_track?.artist || '',
+            album: 'MadRock Radio',
+          });
+        }
       }
     } catch (err) {
       console.error("❌ Load failed:", err);
