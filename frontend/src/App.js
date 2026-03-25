@@ -80,7 +80,7 @@ function App() {
         // Track changed - we need to load new audio
         if (newTrackId !== currentTrackId && !isLoadingTrackRef.current) {
           console.log(`🔄 Track changed from ${currentTrackId} to ${newTrackId}`);
-          loadTrack(state.current_track.audio_url, state.position, newTrackId);
+          loadTrack(state.current_track.audio_url, state.position, newTrackId, state.current_track);
         } else if (newTrackId === currentTrackId && audioRef.current && !audioRef.current.paused) {
           // Same track - gentle position sync only if playing
           const drift = Math.abs(audioRef.current.currentTime - state.position);
@@ -99,7 +99,7 @@ function App() {
   }, [isTunedIn, playingFavorite, currentTrackId]);
 
   // Load track - completely isolated function
-  const loadTrack = useCallback(async (audioUrl, position = 0, trackId = null) => {
+  const loadTrack = useCallback(async (audioUrl, position = 0, trackId = null, trackMeta = null) => {
     // Prevent concurrent loads
     if (isLoadingTrackRef.current) {
       console.log('⚠️  Load already in progress, skipping');
@@ -190,10 +190,10 @@ function App() {
         setError(null);
 
         // Update notification tray metadata
-        if ('mediaSession' in navigator) {
+        if ('mediaSession' in navigator && trackMeta) {
           navigator.mediaSession.metadata = new MediaMetadata({
-            title: radioState?.current_track?.title || 'Madrid Rock Radio',
-            artist: radioState?.current_track?.artist || '',
+            title: trackMeta.title || 'Madrid Rock Radio',
+            artist: trackMeta.artist || '',
             album: 'MadRock Radio',
           });
         }
@@ -301,7 +301,8 @@ function App() {
           await loadTrack(
             response.data.audio_url,
             response.data.position || 0,
-            radioState.current_track.id
+            radioState.current_track.id,
+            radioState.current_track
           );
         }
       } catch (e) {
