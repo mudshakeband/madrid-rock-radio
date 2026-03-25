@@ -196,6 +196,11 @@ function App() {
             artist: trackMeta.artist || '',
             album: 'MadRock Radio',
           });
+          navigator.mediaSession.setPositionState({
+            duration: trackMeta.duration || 0,
+            playbackRate: 1,
+            position: position || 0,
+          });
         }
       }
     } catch (err) {
