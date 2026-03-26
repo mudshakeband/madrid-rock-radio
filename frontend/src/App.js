@@ -64,6 +64,7 @@ function App() {
   const isLoadingTrackRef = useRef(false);
   const abortControllerRef = useRef(null);
   const headUnitRef = useRef(null);
+  const wakeLockRef = useRef(null);
   
   // Fetch radio state - but DON'T automatically reload audio
   const fetchRadioState = useCallback(async () => {
@@ -197,6 +198,7 @@ function App() {
             album: 'MadRock Radio',
           });          
         }
+
       }
     } catch (err) {
       console.error("❌ Load failed:", err);
@@ -293,6 +295,10 @@ function App() {
     if (!isTunedIn) {
       // Power on — tune in to live position
       try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+          console.log('🔒 Wake lock acquired');
+        }
         const response = await axios.get(`${API}/radio/stream`);
         if (response.data.audio_url && radioState?.current_track) {
           setIsTunedIn(true);
@@ -312,6 +318,11 @@ function App() {
       }
     } else {
       // Power off — stop audio completely
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+        console.log('🔓 Wake lock released');
+      }
       audioRef.current.pause();
       audioRef.current.src = '';
       setIsTunedIn(false);
