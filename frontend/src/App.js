@@ -300,6 +300,15 @@ function App() {
           wakeLockRef.current = await navigator.wakeLock.request('screen');
           console.log('🔒 Wake lock acquired');
         }
+        heartbeatRef.current = setInterval(async () => {
+          try {
+            await axios.get(`${API}/radio/state`);
+            console.log('💓 Heartbeat');
+          } catch (e) {
+            console.error('💔 Heartbeat failed:', e);
+          }
+        }, 120000);
+		
         const response = await axios.get(`${API}/radio/stream`);
         if (response.data.audio_url && radioState?.current_track) {
           setIsTunedIn(true);
@@ -323,6 +332,11 @@ function App() {
         await wakeLockRef.current.release();
         wakeLockRef.current = null;
         console.log('🔓 Wake lock released');
+      }
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+        console.log('💔 Heartbeat stopped');
       }
       audioRef.current.pause();
       audioRef.current.src = '';
