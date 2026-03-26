@@ -133,6 +133,15 @@ async def initialize_radio():
             logger.warning("⚠️  No tracks in playlist.json!")
             logger.warning("📲 Send YouTube links to @madridrockradio_bot to add songs!")
 
+async def track_scheduler():
+    """Automatically advance tracks based on duration — runs independently of requests"""
+    while True:
+        await asyncio.sleep(1)
+        if radio_state.current_track and radio_state.is_playing:
+            elapsed = time.time() - radio_state.started_at
+            if elapsed >= radio_state.current_track.duration:
+                await play_next_track()
+                
 async def play_next_track():
     """Advance to next track"""
     global radio_state
@@ -525,6 +534,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     await initialize_radio()
+    asyncio.create_task(track_scheduler())
 
 if __name__ == "__main__":
     import uvicorn
