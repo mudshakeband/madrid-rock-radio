@@ -65,6 +65,7 @@ function App() {
   const abortControllerRef = useRef(null);
   const headUnitRef = useRef(null);
   const wakeLockRef = useRef(null);
+  const heartbeatRef = useRef(null);
   
   // Fetch radio state - but DON'T automatically reload audio
   const fetchRadioState = useCallback(async () => {
