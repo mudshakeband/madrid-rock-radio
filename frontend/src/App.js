@@ -352,9 +352,19 @@ function App() {
   useEffect(() => {
     if (!audioRef.current) return;
     
+    let tickCount = 0;
     const updateTime = () => {
       if (audioRef.current && (isTunedIn || playingFavorite)) {
-        setCurrentTime(audioRef.current.currentTime || 0);
+        const currentTime = audioRef.current.currentTime || 0;
+        setCurrentTime(currentTime);
+        tickCount++;
+        if (tickCount % 50 === 0 && 'mediaSession' in navigator && audioRef.current.duration) {
+          navigator.mediaSession.setPositionState({
+            duration: audioRef.current.duration,
+            playbackRate: 1,
+            position: currentTime,
+          });
+        }
       }
     };
     
