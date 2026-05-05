@@ -643,9 +643,9 @@ function App() {
           <button 
             className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''}`}
             onClick={toggleTuneIn}
-            title={isTunedIn ? "Power off" : "Power on"}
+            title={isTunedIn ? "Turn off" : "Turn on"}
           >
-            <Power size={24} />
+            {isTunedIn ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
           
           {/* Favorites feature temporarily hidden - awaiting backend development */}
