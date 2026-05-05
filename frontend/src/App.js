@@ -683,7 +683,7 @@ function App() {
           <div className={`info-tray ${trayOpen ? 'open' : ''}`}>
             <div className="tray-content">
               <div className="tray-item">
-                📲 Agrega MadRock como app
+                📲 Agrega un acceso directo a MadRock en tu móvil
                 <div className="tray-sub">• Android: ☰ » "Añadir a pantalla de inicio"</div>
                 <div className="tray-sub">• iPhone: Compartir » "Añadir a pantalla de inicio"</div>
               </div>
