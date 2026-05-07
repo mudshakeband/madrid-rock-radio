@@ -139,7 +139,7 @@ async def track_scheduler():
         await asyncio.sleep(1)
         if radio_state.current_track and radio_state.is_playing:
             elapsed = time.time() - radio_state.started_at
-            if elapsed >= radio_state.current_track.duration + 1:
+            if elapsed >= radio_state.current_track.duration + 2:
                 await play_next_track()
                 
 async def play_next_track():
