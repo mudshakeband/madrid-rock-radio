@@ -12,24 +12,20 @@ const SYNC_INTERVAL = 2000;
 
 const BG_IMAGES = {
   morning: [
-    'https://images.pexels.com/photos/19130909/pexels-photo-19130909.jpeg',
-    'https://images.pexels.com/photos/28487253/pexels-photo-28487253.jpeg',
     'https://images.pexels.com/photos/9241631/pexels-photo-9241631.jpeg'
   ],
   afternoon: [
-    'https://images.pexels.com/photos/10945402/pexels-photo-10945402.jpeg',
-    'https://images.pexels.com/photos/11092356/pexels-photo-11092356.jpeg',
     'https://images.pexels.com/photos/5006024/pexels-photo-5006024.jpeg'
   ],
   sunset: [
     'https://images.pexels.com/photos/13221400/pexels-photo-13221400.jpeg',
     'https://images.pexels.com/photos/17357318/pexels-photo-17357318.jpeg',
-    'https://images.pexels.com/photos/31515690/pexels-photo-31515690.jpeg'
+    'https://images.pexels.com/photos/31515690/pexels-photo-31515690.jpeg',
+	'https://images.pexels.com/photos/11269164/pexels-photo-11269164.jpeg'
   ],
   night: [
     'https://images.pexels.com/photos/10945679/pexels-photo-10945679.jpeg',
     'https://images.pexels.com/photos/10945664/pexels-photo-10945664.jpeg',
-    'https://images.pexels.com/photos/11269164/pexels-photo-11269164.jpeg'
   ]
 };
 
