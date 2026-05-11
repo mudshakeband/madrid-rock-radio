@@ -476,6 +476,34 @@ async def get_schedule_status():
             } for s in scheduled_tracks
         ]
     }
+
+@api_router.post("/schedule/dequeue")
+async def dequeue_track(req: dict):
+    """Cancel a scheduled song by file_unique_id"""
+    global scheduled_tracks
+
+    file_unique_id = req.get("file_unique_id")
+    if not file_unique_id:
+        raise HTTPException(status_code=400, detail="file_unique_id required")
+
+    entry = next((s for s in scheduled_tracks if s["track"].file_unique_id == file_unique_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Song not found in schedule")
+
+    # Remove from scheduled_tracks only
+    scheduled_tracks = [s for s in scheduled_tracks if s["track"].file_unique_id != file_unique_id]
+
+    # If it was a staged song, remove from playlist entirely (it doesn't belong in rotation)
+    # If it was a main song, leave it in the playlist — it stays in normal rotation
+    if entry["origin"] == "staged":
+        radio_state.playlist[:] = [t for t in radio_state.playlist if t.file_unique_id != file_unique_id]
+
+    # Recalculate remaining scheduled songs
+    if scheduled_tracks:
+        _insert_all_scheduled()
+
+    logger.info(f"❌ Dequeued: {entry['track'].artist} - {entry['track'].title}")
+    return {"message": f"Dequeued '{entry['track'].title}'"}
     
 @api_router.post("/radio/skip")
 async def skip_track():
