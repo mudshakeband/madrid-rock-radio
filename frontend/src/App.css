@@ -294,7 +294,7 @@ body {
   box-shadow: inset 2px 2px 4px rgba(0,0,0,0.8);
   overflow: hidden;
   margin-bottom: 16px;
-  min-height: 48px; /* Keep consistent height */
+  height: 60px;
 }
 
 .queue-display-single.promo {
@@ -729,6 +729,51 @@ body {
   opacity: 0.9;
   line-height: 1.6;
   text-align: center;
+}
+
+.radio-wrapper.backgrounded {
+  filter: grayscale(100%);
+  transition: filter 0.5s ease;
+}
+
+.radio-wrapper.backgrounded .led.active {
+  filter: none !important;
+  background: #888;
+  box-shadow: 0 0 8px #888;
+}
+
+.radio-wrapper.backgrounded .power-btn {
+  filter: none !important;
+  color: #ffb000;
+  animation: pulse-amber 3s ease-in-out infinite;
+}
+
+.radio-wrapper.backgrounded .btn-disabled {
+  animation: none !important;
+  opacity: 0.4 !important;
+  pointer-events: none !important;
+}
+
+.radio-wrapper.backgrounded .control-btn:not(.primary.icon-only) {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+@keyframes pulse-amber {
+  0%, 100% { color: #555; box-shadow: none; }
+  50% { color: #ffb000; box-shadow: 0 0 8px rgba(255, 176, 0, 0.6); }
+}
+
+@keyframes pulse-amber-slow {
+  0%, 100% { color: #555; box-shadow: none; }
+  50% { color: #ffb000; box-shadow: 0 0 8px rgba(255, 176, 0, 0.6); }
+}
+.control-btn.primary.icon-only.power-btn:not(.active) {
+  animation: pulse-amber 2s ease-in-out infinite;
+}
+
+.radio-wrapper.backgrounded .power-btn {
+  animation: pulse-amber-slow 4s ease-in-out infinite !important;
 }
 
 .radio-wrapper {

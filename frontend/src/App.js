@@ -43,6 +43,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [volume, setVolume] = useState(7);
   const [isTunedIn, setIsTunedIn] = useState(false);
+  const [isBackgrounded, setIsBackgrounded] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const volumeRef = useRef(7);
   const isMutedRef = useRef(false);
@@ -136,7 +137,7 @@ function App() {
         
         // Set position
         audioRef.current.currentTime = position || 0;
-        audioRef.current.volume = isMutedRef.current ? 0 : volumeRef.current / 10;
+        audioRef.current.volume = (isMutedRef.current || isBackgrounded) ? 0 : Math.max(0.01, volumeRef.current / 10);
         
         if (trackId) {
           setCurrentTrackId(trackId);
@@ -180,7 +181,7 @@ function App() {
         });
 
         // Re-apply volume after load (load() can reset it in some browsers)
-        audioRef.current.volume = isMutedRef.current ? 0 : volumeRef.current / 10;
+        audioRef.current.volume = (isMutedRef.current || isBackgrounded) ? 0 : Math.max(0.01, volumeRef.current / 10);
 
         // Now play
         await audioRef.current.play();
@@ -289,7 +290,7 @@ function App() {
   const toggleTuneIn = async () => {
     if (!audioRef.current) return;
     
-    if (!isTunedIn) {
+    if (!isTunedIn && !isBackgrounded) {
       // Power on — tune in to live position
       try {
         if ('wakeLock' in navigator) {
@@ -322,25 +323,16 @@ function App() {
         setError("Failed to tune in");
         setIsTunedIn(false);
       }
+    } else if (isBackgrounded) {
+      // Coming back from backgrounded — restore volume
+      audioRef.current.volume = isMutedRef.current ? 0 : Math.max(0.01, volumeRef.current / 10);
+      setIsBackgrounded(false);
+      setIsTunedIn(true);
     } else {
-      // Power off — stop audio completely
-      if (wakeLockRef.current) {
-        await wakeLockRef.current.release();
-        wakeLockRef.current = null;
-        console.log('🔓 Wake lock released');
-      }
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-        console.log('💔 Heartbeat stopped');
-      }
-      audioRef.current.pause();
-      audioRef.current.src = '';
+      // Going to backgrounded — mute audio
+      audioRef.current.volume = 0;
+      setIsBackgrounded(true);
       setIsTunedIn(false);
-      setLoadedSrc(null);
-      setCurrentTrackId(null);
-      setPlayingFavorite(false);
-      setCurrentTime(0);
     }
   };
 
@@ -350,7 +342,7 @@ function App() {
     
     let tickCount = 0;
     const updateTime = () => {
-      if (audioRef.current && (isTunedIn || playingFavorite)) {
+      if (audioRef.current && (isTunedIn || isBackgrounded || playingFavorite)) {
         const currentTime = audioRef.current.currentTime || 0;
         setCurrentTime(currentTime);
         tickCount++;
@@ -366,14 +358,14 @@ function App() {
     
     const interval = setInterval(updateTime, 100);
     return () => clearInterval(interval);
-  }, [isTunedIn, playingFavorite]);
+  }, [isTunedIn, isBackgrounded, playingFavorite]);
 
   // Volume change
   const handleVolumeChange = (newVolume) => {
     setVolume(newVolume);
     volumeRef.current = newVolume;
-    if (audioRef.current && !isMutedRef.current) {
-      audioRef.current.volume = newVolume / 10;
+    if (audioRef.current && !isBackgrounded) {
+      audioRef.current.volume = Math.max(0.01, newVolume / 10);
     }
   };
 
@@ -494,7 +486,7 @@ function App() {
         </div>
       )}
       
-      <div className="radio-wrapper">
+      <div className={`radio-wrapper ${isBackgrounded ? 'backgrounded' : ''}`}>
 
       {/* Audio Element - key prop prevents React from reusing */}
       <audio 
@@ -545,23 +537,23 @@ function App() {
         {/* Main LCD Display */}
         <div className="lcd-screen">
           <div className="lcd-header">
-            <div className="station-badge">
+            <div className="station-badge" style={{ visibility: isTunedIn || isBackgrounded ? 'visible' : 'hidden' }}>
               <RadioIcon size={14} />
               MADROCK
             </div>
             <div className="status-indicators">
-              <div className={`led ${isTunedIn ? 'active' : ''}`}></div>
+              <div className={`led ${(isTunedIn || isBackgrounded) ? 'active' : ''}`}></div>
               <span className="status-text">
                 {playingFavorite ? "FAV" : "LIVE"}
               </span>
             </div>
           </div>
           
-          {isLoading ? (
+          {isLoading && (isTunedIn || isBackgrounded) ? (
             <div className="lcd-text loading">SINTONIZANDO...</div>
           ) : error ? (
             <div className="lcd-text error">{error}</div>
-          ) : currentTrack ? (
+          ) : currentTrack && (isTunedIn || isBackgrounded) ? (
             <div className="track-display">
               <div className="track-title-wrapper">
   {currentTrack.title.length > 14 ? (
@@ -593,8 +585,8 @@ function App() {
         
         {!playingFavorite && radioState && radioState.up_next && radioState.up_next.length > 0 ? (
           <div className="queue-display-single">
-            <div className="queue-label">UP NEXT</div>
-            <div className="queue-text scrolling">
+            {(isTunedIn || isBackgrounded) && <div className="queue-label">UP NEXT</div>}
+            {(isTunedIn || isBackgrounded) && <div className="queue-text scrolling">
               {[...Array(2)].map((_, copyIndex) => (
                 <span key={`copy-${copyIndex}`}>
                   {radioState.up_next.map((t, i) => (
@@ -605,7 +597,7 @@ function App() {
                   ))}
                 </span>
               ))}
-            </div>
+            </div>}
           </div>
         ) : playingFavorite ? (
           <div className="queue-display-single promo">
@@ -637,11 +629,11 @@ function App() {
           <div className="button-group">
           
           <button 
-            className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''}`}
+            className={`control-btn primary icon-only power-btn ${isTunedIn ? 'active' : ''}`}
             onClick={toggleTuneIn}
             title={isTunedIn ? "Turn off" : "Turn on"}
           >
-            {isTunedIn ? <Volume2 size={24} /> : <VolumeX size={24} />}
+            <Power size={24} />
           </button>
           
           {/* Favorites feature temporarily hidden - awaiting backend development */}
@@ -653,7 +645,7 @@ function App() {
       window.open(currentTrack.band_link, '_blank');
     }
   }}
-  disabled={!currentTrack?.band_link || !isTunedIn}
+  disabled={!currentTrack?.band_link || !isTunedIn || isBackgrounded}
   title="Band info"
 >
   <ExternalLink size={20} />
@@ -661,9 +653,9 @@ function App() {
 </button>
           
           <button 
-            className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''}`}
+             className={`control-btn primary icon-only ${isTunedIn ? 'active' : ''} ${isBackgrounded ? 'btn-disabled' : ''}`}
             onClick={shareTrack}
-            disabled={!currentTrack || !isTunedIn}
+            disabled={!currentTrack || !isTunedIn || isBackgrounded}
             title="Share"
           >
             <Share2 size={22} />
