@@ -452,6 +452,14 @@ async def queue_track(req: QueueRequest):
                            if radio_state.current_track and t.id == radio_state.current_track.id), 0)
         insert_idx = min(current_idx + 4, len(radio_state.playlist))
         radio_state.playlist.insert(insert_idx, actual_track)
+        # Track in scheduled_tracks as immediate queue so /xq can find and remove it
+        scheduled_tracks = [s for s in scheduled_tracks
+                           if s["track"].file_unique_id != actual_track.file_unique_id]
+        scheduled_tracks.append({
+            "track": actual_track,
+            "play_at": None,
+            "origin": req.origin
+        })
         logger.info(f"🎯 Queued: {actual_track.artist} - {actual_track.title} at position 4")
         return {"message": f"Queued '{actual_track.title}' to play in approximately 4 songs"}
 
