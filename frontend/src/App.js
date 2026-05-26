@@ -672,8 +672,8 @@ function App() {
             <div className="tray-content">
               <div className="tray-item">
                 📲 Agrega un acceso directo a MadRock en tu móvil
-                <div className="tray-sub">• Android: ☰ » "Añadir a pantalla de inicio"</div>
-                <div className="tray-sub">• iPhone: Compartir » "Añadir a pantalla de inicio"</div>
+                <div className="tray-sub">Android: ☰ » "Añadir a pantalla de inicio"</div>
+                <div className="tray-sub">Y para escuchar en segundo plano recuerda ajustar las preferencias de batería para la app de tu navegador</div>
               </div>
               <div className="tray-item" onClick={() => window.open('https://instagram.com/madrock.radio', '_blank')}>
                 📸 Síguenos en Instagram @madrock.radio
