@@ -337,7 +337,7 @@ async def get_share_data():
     share_url = "https://www.madrockradio.com"
     
     duration = track.duration or 0
-    position = radio_state.position or 0
+    position = get_current_position()
     
     def format_time(seconds):
         m = int(seconds // 60)
@@ -349,7 +349,8 @@ async def get_share_data():
     filled = max(0, min(bar_width, filled))
     progress_bar = "▓" * filled + "░" * (bar_width - filled)
     
-    upcoming_bands = [t.artist for t in radio_state.up_next[:3]] if radio_state.up_next else []
+    upcoming = get_upcoming_tracks(3)
+    upcoming_bands = [t.artist for t in upcoming] if upcoming else []
     upnext_line = ", ".join(upcoming_bands) if upcoming_bands else "—"
     
     share_text = (
