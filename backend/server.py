@@ -344,7 +344,7 @@ async def get_share_data():
         s = int(seconds % 60)
         return f"{m}:{s:02d}"
     
-    bar_width = 20
+    bar_width = 10
     filled = int((position / duration) * bar_width) if duration > 0 else 0
     filled = max(0, min(bar_width, filled))
     progress_bar = "▓" * filled + "░" * (bar_width - filled)
@@ -356,7 +356,8 @@ async def get_share_data():
     share_text = (
         f"MADROCK RADIO ● EN DIRECTO\n\n"
         f"{track.artist} - \"{track.title}\"\n"
-        f"{progress_bar}  {format_time(position)} / {format_time(duration)}\n\n"
+        f"{progress_bar}\n"
+        f"{format_time(position)} / {format_time(duration)}\n\n"
         f"A continuación: {upnext_line}\n\n"
         f"Sintonízanos desde tu PC o móvil!\n"
         f"{share_url}"
