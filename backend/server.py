@@ -334,12 +334,37 @@ async def get_share_data():
         raise HTTPException(status_code=404, detail="No track playing")
     
     track = radio_state.current_track
-    share_url = "https://madrid-rock-radio.onrender.com"
+    share_url = "https://www.madrockradio.com"
+    
+    duration = track.duration or 0
+    position = radio_state.position or 0
+    
+    def format_time(seconds):
+        m = int(seconds // 60)
+        s = int(seconds % 60)
+        return f"{m}:{s:02d}"
+    
+    bar_width = 20
+    filled = int((position / duration) * bar_width) if duration > 0 else 0
+    filled = max(0, min(bar_width, filled))
+    progress_bar = "▓" * filled + "░" * (bar_width - filled)
+    
+    upcoming_bands = [t.artist for t in radio_state.up_next[:3]] if radio_state.up_next else []
+    upnext_line = ", ".join(upcoming_bands) if upcoming_bands else "—"
+    
+    share_text = (
+        f"MADROCK RADIO ● EN DIRECTO\n\n"
+        f"{track.artist} - \"{track.title}\"\n"
+        f"{progress_bar}  {format_time(position)} / {format_time(duration)}\n\n"
+        f"A continuación: {upnext_line}\n\n"
+        f"Sintonízanos desde tu PC o móvil!\n"
+        f"{share_url}"
+    )
     
     return {
         "url": share_url,
-        "title": f"🎸 {track.title} - {track.artist}",
-        "description": "madrid-rock-radio.onrender.com",
+        "title": f"{track.artist} - {track.title}",
+        "text": share_text,
         "track": track.model_dump()
     }
 

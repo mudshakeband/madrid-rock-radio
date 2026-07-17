@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import "./App.css";
 import axios from "axios";
-import html2canvas from "html2canvas";
 import { Play, VolumeX, Volume2, Share2, Heart, Radio as RadioIcon, Power, ExternalLink } from "lucide-react";
 
 // FIXED: Hardcoded backend URL to ensure correct API endpoint is always used
@@ -425,31 +424,17 @@ function App() {
       const response = await axios.get(`${API}/share/current`);
       const shareData = response.data;
 
-      // Try mobile share with screenshot
-      if (headUnitRef.current && navigator.canShare) {
-        const canvas = await html2canvas(headUnitRef.current, {
-          backgroundColor: null,
-          scale: 2,
-          useCORS: true,
+      if (navigator.share) {
+        await navigator.share({
+          title: shareData.title,
+          text: shareData.text,
         });
-
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        const file = new File([blob], 'madrid-rock-radio.png', { type: 'image/png' });
-
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            title: shareData.title,
-            text: shareData.description,
-            url: shareData.url,
-            files: [file]
-          });
-          return;
-        }
+        return;
       }
 
-      // Desktop fallback: copy URL to clipboard
-      await navigator.clipboard.writeText(shareData.url);
-      showToast("Link copied!");
+      // Desktop fallback: copy text block to clipboard
+      await navigator.clipboard.writeText(shareData.text);
+      showToast("¡Copiado al portapapeles!");
 
     } catch (e) {
       if (e.name !== 'AbortError') {
