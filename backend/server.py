@@ -354,19 +354,19 @@ async def get_share_data():
     upnext_line = " » ".join(upcoming_bands) if upcoming_bands else "—"
     
     border = "─" * 18
-    inner_divider = "─" * 16
+    inner_divider = "- " * 9
     
     share_text = (
-        f"MADROCK RADIO ● EN DIRECTO\n"
-        f"┌{border}┐\n"
-        f"   {track.artist} - \"{track.title}\"\n"
-        f"   {progress_bar}\n"
-        f"   {format_time(position)} / {format_time(duration)}\n"
-        f"   {inner_divider}\n"
-        f"   A continuación:\n"
-        f"   {upnext_line}\n"
-        f"└{border}┘\n\n"
-        f"Sintonízanos desde tu PC o móvil!\n"
+        f"MADROCK RADIO\n"
+        f"● EN DIRECTO\n"
+        f"{border}\n"
+        f"{track.artist} - \"{track.title}\"\n"
+        f"{progress_bar}\n"
+        f"{format_time(position)} / {format_time(duration)}\n"
+        f"{inner_divider}\n"
+        f"A continuación:\n"
+        f"{upnext_line}\n"
+        f"{border}\n"
         f"{share_url}"
     )
     return {
