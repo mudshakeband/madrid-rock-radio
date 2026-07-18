@@ -344,7 +344,7 @@ async def get_share_data():
         s = int(seconds % 60)
         return f"{m}:{s:02d}"
     
-    bar_width = 18
+    bar_width = 16
     filled = int((position / duration) * bar_width) if duration > 0 else 0
     filled = max(0, min(bar_width, filled))
     progress_bar = "▓" * filled + "░" * (bar_width - filled)
@@ -354,7 +354,7 @@ async def get_share_data():
     upnext_line = " » ".join(upcoming_bands) if upcoming_bands else "—"
     
     border = "─" * 18
-    inner_divider = " -" * 20
+    inner_divider = " -" * 22
     
     share_text = (
         f"MADROCK RADIO\n"
