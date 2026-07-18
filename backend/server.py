@@ -334,7 +334,7 @@ async def get_share_data():
         raise HTTPException(status_code=404, detail="No track playing")
     
     track = radio_state.current_track
-    share_url = "https://www.madrockradio.com"
+    share_url = "https://madrockradio.com"
     
     duration = track.duration or 0
     position = get_current_position()
@@ -354,7 +354,7 @@ async def get_share_data():
     upnext_line = " » ".join(upcoming_bands) if upcoming_bands else "—"
     
     border = "─" * 18
-    inner_divider = "_ " * 18
+    inner_divider = " -" * 18
     
     share_text = (
         f"MADROCK RADIO\n"
@@ -368,6 +368,8 @@ async def get_share_data():
         f"A continuación:\n"
         f"{upnext_line}\n"
         f"{border}\n"
+        f"\n"
+        f"Sintonízanos!\n"
         f"{share_url}"
     )
     return {
