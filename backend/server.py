@@ -354,7 +354,7 @@ async def get_share_data():
     upnext_line = " » ".join(upcoming_bands) if upcoming_bands else "—"
     
     border = "─" * 18
-    inner_divider = " -" * 18
+    inner_divider = " -" * 20
     
     share_text = (
         f"MADROCK RADIO\n"
