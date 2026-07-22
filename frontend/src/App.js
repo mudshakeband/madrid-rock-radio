@@ -338,12 +338,18 @@ function App() {
       }
     } else if (isBackgrounded) {
       // Coming back from backgrounded — restore volume
+      // Also un-mute here since iOS relies on .muted, not .volume (see below)
       audioRef.current.volume = isMutedRef.current ? 0 : Math.max(0.01, volumeRef.current / 10);
+      audioRef.current.muted = isMutedRef.current ? true : false;
       setIsBackgrounded(false);
       setIsTunedIn(true);
     } else {
       // Going to backgrounded — mute audio
+      // iOS/WebKit ignores the .volume property entirely; .muted is the
+      // property it actually respects. Setting both keeps existing
+      // Android/desktop behavior unchanged while fixing iOS.
       audioRef.current.volume = 0;
+      audioRef.current.muted = true;
       setIsBackgrounded(true);
       setIsTunedIn(false);
     }
