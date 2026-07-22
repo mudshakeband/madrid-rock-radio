@@ -42,6 +42,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [volume, setVolume] = useState(7);
   const [isTunedIn, setIsTunedIn] = useState(false);
+  // iOS/WebKit ignores the .volume property (hardware-only volume control),
+  // so the in-app slider is non-functional there — hide it to avoid confusion.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const [isBackgrounded, setIsBackgrounded] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const volumeRef = useRef(7);
@@ -618,18 +621,20 @@ function App() {
         ) : null}
         
         <div className="controls">
-          <div className="volume-control horizontal">
-            <label className="control-label">VOL</label>
-            <input
-              type="range"
-              min="0"
-              max="10"
-              step="1"
-              value={volume}
-              onChange={(e) => handleVolumeChange(Number(e.target.value))}
-              className="volume-slider horizontal"
-            />
-          </div>
+          {!isIOS && (
+            <div className="volume-control horizontal">
+              <label className="control-label">VOL</label>
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="1"
+                value={volume}
+                onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                className="volume-slider horizontal"
+              />
+            </div>
+          )}
           
           <div className="button-group">
           
