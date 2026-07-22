@@ -290,6 +290,20 @@ function App() {
     if (!audioRef.current) return;
     
     if (!isTunedIn && !isBackgrounded) {
+      // iOS/WebKit only allows audio.play() to unlock playback when called
+      // synchronously inside a real user tap — any `await` before the first
+      // play() call breaks that link, and iOS silently blocks audio from then on.
+      // This immediate play()+pause() "arms" the <audio> element while the tap
+      // gesture is still valid, so the real play() later (after the awaits
+      // below) is allowed to produce sound. No-op on Android/desktop, since
+      // there's no source loaded yet and no such restriction there.
+      try {
+        audioRef.current.play().catch(() => {});
+        audioRef.current.pause();
+      } catch (e) {
+        // ignore — this is just an iOS unlock, safe to fail silently
+      }
+      
       // Power on — tune in to live position
       try {
         if ('wakeLock' in navigator) {
