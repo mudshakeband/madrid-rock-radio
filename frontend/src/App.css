@@ -115,7 +115,7 @@ body {
   
   .radio-container {
     align-items: flex-start;
-    padding-top: 40vw;
+    padding-top: clamp(60px, 40vw, 140px);
   }
   
   @media (max-width: 768px) and (hover: hover) {
